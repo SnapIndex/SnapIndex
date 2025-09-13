@@ -8,7 +8,7 @@ sounddevice>=0.4.6
 numpy>=1.24.0
 
 # PyTorch and Whisper models
-torch>=2.0.0
+# torch>=2.0.0
 openai-whisper>=20231117
 scipy>=1.10.0
 

@@ -1,22 +1,32 @@
-import onnxruntime as ort
-import numpy as np
-import tkinter as tk
-import os, sys
+import flet as ft
+import sys
+import os
 
-
+# Get folder from command line argument
 if len(sys.argv) > 1:
     selected_folder = sys.argv[1]
 else:
-    selected_folder = "No folder selected"
+    selected_folder = None
 
+def main(page: ft.Page):
+    page.title = "SnapIndex"
 
+    if not selected_folder or not os.path.exists(selected_folder):
+        page.add(ft.Text("No folder selected or folder does not exist.", color="red"))
+        return
 
-root = tk.Tk()
-root.title("SnapIndex")
+    # List all .pdf files
+    pdf_files = [f for f in os.listdir(selected_folder) if f.lower().endswith(".pdf")]
 
+    page.add(ft.Text("Selected Folder:", weight=ft.FontWeight.BOLD))
+    page.add(ft.Text(selected_folder, color="blue"))
+    page.add(ft.Divider())
 
-tk.Label(root, text=f"Selected Folder:").pack()
-tk.Label(root, text=selected_folder, wraplength=400, fg="blue").pack(padx=10, pady=5)
+    if pdf_files:
+        # Display PDFs as a list
+        for pdf in pdf_files:
+            page.add(ft.Text(pdf))
+    else:
+        page.add(ft.Text("No PDF files found in this folder.", italic=True, color="gray"))
 
-
-root.mainloop()
+ft.app(target=main)
