@@ -24,6 +24,9 @@ transformers>=4.35.0
 # Configuration and utilities
 PyYAML>=6.0
 
+# GUI framework
+flet>=0.21.0
+
 # Optional: For audio file loading
 # audio2numpy>=0.1.5
 # tiktoken>=0.5.0
