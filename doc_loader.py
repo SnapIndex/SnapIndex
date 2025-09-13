@@ -1,8 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_core.documents import Document
+import fitz  # PyMuPDF
 from datetime import datetime
 import numpy as np
 import onnxruntime as ort
@@ -10,6 +9,16 @@ from transformers import WhisperProcessor, WhisperTokenizer, WhisperFeatureExtra
 import librosa
 import warnings
 warnings.filterwarnings("ignore")
+
+
+class Document:
+    """
+    Simple Document class to maintain compatibility with the existing code.
+    Replaces langchain_core.documents.Document.
+    """
+    def __init__(self, page_content: str, metadata: Dict[str, Any]):
+        self.page_content = page_content
+        self.metadata = metadata
 
 
 def load_pdfs_from_directory(directory_path: str) -> List[List[Document]]:
@@ -54,38 +63,39 @@ def load_pdfs_from_directory(directory_path: str) -> List[List[Document]]:
             file_size = pdf_path.stat().st_size
             modified_date = datetime.fromtimestamp(pdf_path.stat().st_mtime)
             
-            # Load PDF content
-            loader = PyMuPDFLoader(str(pdf_path))
-            docs = loader.load()
-            
-            total_pages = len(docs)
+            # Load PDF content using PyMuPDF directly
+            pdf_document = fitz.open(str(pdf_path))
+            total_pages = len(pdf_document)
             pdf_documents = []  # Documents for this specific PDF
             
             # Process each page
-            for i, doc in enumerate(docs):
-                # Extract page number from metadata if available
-                page_number = i + 1
-                if hasattr(doc, 'metadata') and 'page' in doc.metadata:
-                    page_number = doc.metadata['page'] + 1
+            for page_num in range(total_pages):
+                page = pdf_document[page_num]
+                
+                # Extract text content from the page
+                page_content = page.get_text()
                 
                 # Create enhanced metadata
                 enhanced_metadata = {
                     'source': str(pdf_path),
                     'pdf_name': pdf_path.name,
-                    'page_number': page_number,
+                    'page_number': page_num + 1,
                     'total_pages': total_pages,
                     'file_size': file_size,
                     'modified_date': modified_date.isoformat(),
-                    **doc.metadata  # Include any existing metadata from the loader
+                    'page': page_num  # Keep original page numbering for compatibility
                 }
                 
                 # Create Document with enhanced metadata
                 enhanced_doc = Document(
-                    page_content=doc.page_content,
+                    page_content=page_content,
                     metadata=enhanced_metadata
                 )
                 
                 pdf_documents.append(enhanced_doc)
+            
+            # Close the PDF document
+            pdf_document.close()
             
             # Add this PDF's documents to the main list
             all_pdf_documents.append(pdf_documents)
