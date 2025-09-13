@@ -1,17 +1,22 @@
 import onnxruntime as ort
 import numpy as np
 import tkinter as tk
+import os, sys
 
-# session = ort.InferenceSession("model.onnx")
-# input_name = session.get_inputs()[0].name
-# output_name = session.get_outputs()[0].name
 
-# input_data = np.random.rand(1, 3, 224, 224).astype(np.float32)
-# result = session.run([output_name], {input_name: input_data})[0]
+if len(sys.argv) > 1:
+    selected_folder = sys.argv[1]
+else:
+    selected_folder = "No folder selected"
 
-result = "HELLO WORLD"
+
 
 root = tk.Tk()
-root.title("ONNX Python App")
-tk.Label(root, text=f"Prediction: {result}").pack()
+root.title("SnapIndex")
+
+
+tk.Label(root, text=f"Selected Folder:").pack()
+tk.Label(root, text=selected_folder, wraplength=400, fg="blue").pack(padx=10, pady=5)
+
+
 root.mainloop()
