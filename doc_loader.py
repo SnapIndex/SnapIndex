@@ -12,11 +12,12 @@ def find_pdfs(folder_path):
 def extract_pdf_text(pdf_path):
     pdf_name = os.path.basename(pdf_path)
     reader = PdfReader(pdf_path)
-    
+    all_text = []
     for i, page in enumerate(reader.pages, start = 1):
         text = page.extract_text() or ""
-        yield {
+        all_text.append({
             "pdf_name": pdf_name,
             "page_number": i,
             "text": text.strip()
-        }
+        })
+    return all_text
