@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
-import fitz  # PyMuPDF
+from pypdf import PdfReader
 from datetime import datetime
 import numpy as np
 import onnxruntime as ort
@@ -63,17 +63,17 @@ def load_pdfs_from_directory(directory_path: str) -> List[List[Document]]:
             file_size = pdf_path.stat().st_size
             modified_date = datetime.fromtimestamp(pdf_path.stat().st_mtime)
             
-            # Load PDF content using PyMuPDF directly
-            pdf_document = fitz.open(str(pdf_path))
-            total_pages = len(pdf_document)
+            # Load PDF content using pypdf directly
+            pdf_reader = PdfReader(str(pdf_path))
+            total_pages = len(pdf_reader.pages)
             pdf_documents = []  # Documents for this specific PDF
             
             # Process each page
             for page_num in range(total_pages):
-                page = pdf_document[page_num]
+                page = pdf_reader.pages[page_num]
                 
                 # Extract text content from the page
-                page_content = page.get_text()
+                page_content = page.extract_text()
                 
                 # Create enhanced metadata
                 enhanced_metadata = {
@@ -94,9 +94,6 @@ def load_pdfs_from_directory(directory_path: str) -> List[List[Document]]:
                 
                 pdf_documents.append(enhanced_doc)
             
-            # Close the PDF document
-            pdf_document.close()
-            
             # Add this PDF's documents to the main list
             all_pdf_documents.append(pdf_documents)
             
@@ -110,7 +107,7 @@ def load_pdfs_from_directory(directory_path: str) -> List[List[Document]]:
 class WhisperONNXTranscriber:
     """
     ONNX-based Whisper transcriber for audio files.
-    Supports multiple audio formats and provides fallback to PyTorch.
+    Supports multiple audio formats using only ONNX models.
     """
     
     def __init__(self, model_path: str, processor_path: Optional[str] = None):
@@ -204,7 +201,7 @@ class WhisperONNXTranscriber:
                         print("Trying next provider option...")
                         continue
                     else:
-                        # If all provider options fail, suggest downloading standard models
+                        # If all provider options fail, raise an error
                         print("ONNX MODEL COMPATIBILITY ISSUE")
                         print("="*60)
                         print("Your ONNX models appear to be incompatible with the available providers.")
@@ -212,20 +209,8 @@ class WhisperONNXTranscriber:
                         print("\nTo fix this, you can:")
                         print("1. Download standard Whisper-Small ONNX models from Hugging Face")
                         print("2. Or convert your models to be compatible with CPU execution")
-                        print("\nAttempting fallback to PyTorch model...")
-                        # Fallback to PyTorch model
-                        try:
-                            from transformers import WhisperForConditionalGeneration
-                            import torch
-                            
-                            print("Loading PyTorch Whisper model as fallback...")
-                            self.model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
-                            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-                            self.model.to(self.device)
-                            self.use_pytorch_fallback = True
-                            print(f"✓ Loaded PyTorch model on device: {self.device}")
-                        except Exception as pytorch_error:
-                            raise RuntimeError(f"Failed to load both ONNX and PyTorch models. ONNX error: {e}. PyTorch error: {pytorch_error}")
+                        print("3. Install additional ONNX providers (e.g., onnxruntime-openvino for ARM)")
+                        raise RuntimeError(f"Failed to load ONNX models with any available provider. Last error: {e}")
             
             print("ONNX models loaded successfully!")
             
@@ -257,7 +242,7 @@ class WhisperONNXTranscriber:
                         language: str = "english",
                         task: str = "transcribe") -> str:
         """
-        Transcribe audio file to text using ONNX or PyTorch models.
+        Transcribe audio file to text using ONNX models.
         
         Args:
             audio_path: Path to the audio file
@@ -272,11 +257,8 @@ class WhisperONNXTranscriber:
             print(f"Loading audio from: {audio_path}")
             audio = self.load_audio(audio_path)
             
-            # Check if we're using PyTorch fallback
-            if hasattr(self, 'use_pytorch_fallback') and self.use_pytorch_fallback:
-                return self._transcribe_with_pytorch(audio, language, task)
-            else:
-                return self._transcribe_with_onnx(audio, language, task)
+            # Transcribe using ONNX models
+            return self._transcribe_with_onnx(audio, language, task)
             
         except Exception as e:
             print(f"Error during transcription: {e}")
@@ -308,40 +290,6 @@ class WhisperONNXTranscriber:
         # Run decoder (simplified greedy decoding)
         print("Running decoder...")
         generated_ids = self._decode_audio(encoder_outputs[0], decoder_input_ids)
-        
-        # Decode transcription
-        transcription = self.processor.tokenizer.decode(
-            generated_ids[0], 
-            skip_special_tokens=True
-        )
-        
-        print("Transcription completed!")
-        return transcription.strip()
-    
-    def _transcribe_with_pytorch(self, audio: np.ndarray, language: str, task: str) -> str:
-        """Transcribe using PyTorch model."""
-        import torch
-        
-        # Process audio using feature extractor
-        print("Processing audio with PyTorch...")
-        input_features = self.processor.feature_extractor(
-            audio, 
-            sampling_rate=16000, 
-            return_tensors="pt"
-        ).input_features.to(self.device)
-        
-        # Generate transcription
-        print("Generating transcription...")
-        with torch.no_grad():
-            generated_ids = self.model.generate(
-                input_features,
-                max_length=448,
-                num_beams=5,
-                temperature=0.0,
-                do_sample=False,
-                language=language,
-                task=task
-            )
         
         # Decode transcription
         transcription = self.processor.tokenizer.decode(

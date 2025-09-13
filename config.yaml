@@ -1,0 +1,33 @@
+# SnapIndex Whisper Transcription Configuration
+# This file contains all the configuration options for the real-time transcription system
+
+# Audio Configuration
+sample_rate: 16000          # Audio sample rate (Hz) - Whisper expects 16kHz
+chunk_duration: 4           # Duration of audio chunks in seconds
+channels: 1                 # Number of audio channels (1 = mono, 2 = stereo)
+silence_threshold: 0.001    # Threshold for detecting silence (0.0 to 1.0)
+
+# Processing Configuration
+max_workers: 4              # Maximum number of worker threads for processing
+queue_timeout: 1.0          # Timeout for audio queue operations (seconds)
+
+# Model Configuration
+encoder_path: "C:\\Users\\akarsh\\Downloads\\models\\encoder_model.onnx"  # Path to encoder model file
+decoder_path: "C:\\Users\\akarsh\\Downloads\\models\\decoder_model.onnx"  # Path to decoder model file
+
+# Optional: If you want to specify a model directory instead
+# model_path: "models"        # Path to the directory containing model files
+
+# Audio Device Configuration
+device: "default"           # Audio device name (use "default" for system default)
+device_index: null          # Specific device index (null for default)
+                            # To find available devices, run the script and it will list them
+
+# Performance Tuning (optional)
+# buffer_size: 1024         # Audio buffer size
+# latency: "low"            # Audio latency preference: "low", "normal", "high"
+
+# Output Configuration (optional)
+# output_format: "text"     # Output format: "text", "json", "srt"
+# save_transcriptions: false # Whether to save transcriptions to file
+# output_file: "transcriptions.txt" # File to save transcriptions (if enabled)

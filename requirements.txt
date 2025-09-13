@@ -1,0 +1,39 @@
+# Core dependencies for SnapIndex
+# PDF processing
+pypdf>=6.0.0
+
+# Audio processing and transcription
+librosa>=0.10.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# PyTorch and Whisper models
+torch>=2.0.0
+openai-whisper>=20231117
+scipy>=1.10.0
+
+# ONNX runtime for Qualcomm models
+onnxruntime>=1.16.0
+onnx>=1.14.0
+transformers>=4.35.0
+
+# Qualcomm-specific packages (install if available)
+# onnxruntime-qnn  # Uncomment if available via pip
+# qnn-sdk  # Uncomment if available via pip
+
+# Configuration and utilities
+PyYAML>=6.0
+
+# Optional: For audio file loading
+# audio2numpy>=0.1.5
+# tiktoken>=0.5.0
+
+# GUI (tkinter is included with Python, but listing for completeness)
+# tkinter - built-in with Python
+
+# Optional: For better ONNX performance on different platforms
+# onnxruntime-openvino>=1.16.0  # For ARM/Intel optimization
+# onnxruntime-directml>=1.16.0  # For Windows GPU acceleration
+
+# Development and testing (optional)
+# pytest>=7.0.0
