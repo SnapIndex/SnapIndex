@@ -469,7 +469,7 @@ def create_organize_content(source_folder, file_picker, default_folder):
             print(f"Error in rollback_organization: {e}")
     
     # Header with banner image
-    banner_path = resource_path("banner.png")
+    banner_path = resource_path("reorg.png")
     header = ft.Container(
         content=ft.Image(
             src=banner_path if os.path.exists(banner_path) else None,
@@ -776,6 +776,9 @@ def main(page: ft.Page):
             # Update button styles
             for btn in sidebar_buttons:
                 btn.bgcolor = "white" if btn.data != tab_name else "#f5f7fa"
+                # Update text weight
+                if hasattr(btn.content, 'controls') and len(btn.content.controls) > 1:
+                    btn.content.controls[1].weight = ft.FontWeight.BOLD if btn.data == tab_name else ft.FontWeight.NORMAL
             
             # Update content
             content_container.content = get_content_for_tab(tab_name, organize_content)
