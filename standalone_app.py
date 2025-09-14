@@ -226,14 +226,15 @@ def create_search_content(file_picker):
     
     # File picker will be added to page overlay in main function
     
-    # Header
+    # Header with banner image
     header = ft.Container(
-        content=ft.Column([
-            ft.Text("Semantic Document Search", size=28, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800),
-            ft.Text("Search through PDFs, Word docs, Excel files, PowerPoint, and text files", size=14, color=ft.Colors.GREY_600),
-            ft.Divider(height=1, color=ft.Colors.BLUE_200)
-        ], spacing=8),
-        padding=ft.padding.only(bottom=20)
+        content=ft.Image(
+            src="banner.png",
+        ),
+        border_radius=ft.border_radius.all(15),
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        margin=ft.margin.only(left=-20, right=-20, top=-20),
+        padding=ft.padding.only(bottom=20),
     )
     
     # Folder selection section
@@ -241,14 +242,20 @@ def create_search_content(file_picker):
     
     folder_section = ft.Container(
         content=ft.Column([
-            ft.Text("Select Folder to Search", size=16, weight=ft.FontWeight.BOLD),
+            ft.Text("Select Search Folder", size=16, weight=ft.FontWeight.BOLD),
             ft.Row([
                 ft.ElevatedButton(
                     "Choose Folder",
                     icon=ft.Icons.FOLDER_OPEN,
                     on_click=lambda _: file_picker.get_directory_path(),
-                    bgcolor=ft.Colors.BLUE,
-                    color=ft.Colors.WHITE
+                    bgcolor=ft.Colors.GREEN_600,
+                    color=ft.Colors.WHITE,
+                    style=ft.ButtonStyle(
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                        padding=ft.padding.symmetric(horizontal=20, vertical=12),
+                        elevation=3,
+                        shadow_color=ft.Colors.GREEN_800
+                    )
                 ),
                 folder_display
             ], alignment=ft.MainAxisAlignment.START, spacing=10)
@@ -277,7 +284,6 @@ def create_search_content(file_picker):
     )
     
     results_container = ft.Column(
-        scroll=ft.ScrollMode.AUTO,
         expand=True
     )
 
@@ -294,7 +300,7 @@ def create_search_content(file_picker):
             expand=True,
             padding=10
         )
-    ], expand=True)
+    ], expand=True, scroll=ft.ScrollMode.AUTO)
 
 def create_organize_content():
     """Create organize tab content"""

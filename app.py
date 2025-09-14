@@ -1,68 +1,102 @@
 import flet as ft
 import sys
 import os
-from simple_faiss import create_faiss_db, search_faiss_db, delete_faiss_db
+import subprocess
+import platform
+import hashlib
+from simple_faiss import create_faiss_db
 
-# Hard-coded folder location
+"""This variant mirrors standalone_app.py behavior but uses a hardcoded folder path.
+It builds a per-folder FAISS DB, performs semantic search across all documents,
+deduplicates results per file, and allows clicking a result to open the file.
+"""
+
+# Hard-coded folder location (simulate context-opened folder)
 selected_folder = "C:\\Users\\akarsh\\Downloads"
-db_path = "./faiss_database"
 
-def search_in_pdfs(query, folder_path):
-    """Search for query text using FAISS semantic search"""
+def _compute_folder_db_path(folder_path: str) -> str:
+    abs_folder = os.path.abspath(folder_path)
+    folder_hash = hashlib.sha1(abs_folder.encode("utf-8")).hexdigest()[:12]
+    safe_name = os.path.basename(abs_folder) or "root"
+    return os.path.join("./faiss_databases", f"{safe_name}_{folder_hash}")
+
+def search_in_documents(query, folder_path):
+    """Search using FAISS semantic search across all document types for this folder."""
     try:
-        # Check if database exists, if not create it
-        if not os.path.exists(db_path):
-            print("Creating FAISS database...")
-            create_faiss_db(folder_path, db_path)
-        
-        # Use the search_faiss_db function from simple_faiss.py
-        # and capture the results in the expected format
-        return _get_faiss_results(query, db_path, k=10)
-        
+        folder_db_path = _compute_folder_db_path(folder_path)
+        # Create or update the DB
+        if not os.path.exists(folder_db_path):
+            print(f"Creating new FAISS database for folder: {folder_path}")
+            create_faiss_db(folder_path, folder_db_path, incremental=False)
+        else:
+            print(f"Updating FAISS database incrementally for folder: {folder_path}")
+            create_faiss_db(folder_path, folder_db_path, incremental=True)
+        # Search and format
+        return _get_faiss_results(query, folder_db_path, k=10, folder_path=folder_path)
     except Exception as e:
         print(f"Error in FAISS search: {e}")
         return []
 
-def _get_faiss_results(query_string, db_path, k=10):
-    """Get FAISS search results using functions from simple_faiss.py"""
+def _get_faiss_results(query_string, db_path, k=10, folder_path=None):
     import faiss
     import numpy as np
     import pickle
     from fastembed import TextEmbedding
-    
-    # Load index and metadata (same logic as in simple_faiss.py)
+
     index = faiss.read_index(os.path.join(db_path, "index.faiss"))
     with open(os.path.join(db_path, "metadata.pkl"), "rb") as f:
         metadata = pickle.load(f)
-    
-    # Create query embedding (same logic as in simple_faiss.py)
+
     embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
     query_vector = list(embedding_model.embed([query_string]))[0]
-    
-    # Search (same logic as in simple_faiss.py)
     distances, indices = index.search(np.array([query_vector], dtype='float32'), k)
-    
-    # Format results to match the original app.py structure
+
     results = []
+    threshold = 0.3  # mirror standalone_app threshold
     for distance, idx in zip(distances[0], indices[0]):
         if idx == -1:
             continue
-        
         meta = metadata[idx]
-        similarity = 1 / (1 + distance)  # Convert distance to similarity
-        
+        similarity = 1 / (1 + distance)
+        if similarity < threshold:
+            continue
+        file_name = meta["pdf_name"]
+        file_ext = os.path.splitext(file_name)[1].lower()
+        file_type = file_ext[1:] if file_ext else "unknown"
+        chunk_type = meta.get("chunk_type", "content")
+        page_display = "Filename" if chunk_type == "filename" else f"Page {meta['page_number']}"
         results.append({
-            "file": meta["pdf_name"],
-            "page": meta["page_number"],
+            "file": file_name,
+            "page": page_display,
             "snippet": meta["text"][:300] + "..." if len(meta["text"]) > 300 else meta["text"],
-            "full_path": selected_folder,  # Use the global selected_folder
-            "similarity": similarity
+            "full_path": folder_path or selected_folder,
+            "similarity": similarity,
+            "file_type": file_type,
+            "chunk_type": chunk_type
         })
-    
-    return results
+    # Dedup best per file
+    best_by_file = {}
+    for item in results:
+        key = item["file"]
+        if key not in best_by_file or item["similarity"] > best_by_file[key]["similarity"]:
+            best_by_file[key] = item
+    deduped = list(best_by_file.values())
+    deduped.sort(key=lambda r: r.get("similarity", 0), reverse=True)
+    return deduped
+
+def open_file_location(file_path):
+    try:
+        if platform.system() == "Windows":
+            os.startfile(file_path)
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", file_path], check=True)
+        else:
+            subprocess.run(["xdg-open", file_path], check=True)
+    except Exception as e:
+        print(f"Error opening file: {e}")
 
 def main(page: ft.Page):
-    page.title = "SnapIndex - PDF Search"
+    page.title = "SnapIndex - Semantic Document Search"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.window_width = 1000
     page.window_height = 700
@@ -75,8 +109,8 @@ def main(page: ft.Page):
 
     # Create search components
     search_field = ft.TextField(
-        label="Search in PDFs",
-        hint_text="Enter your search query...",
+        label="Search All Documents",
+        hint_text="Search across PDFs, Word docs, Excel, PowerPoint, and text files...",
         expand=True,
         on_submit=lambda e: perform_search(e, search_field, results_container, selected_folder)
     )
@@ -109,8 +143,8 @@ def main(page: ft.Page):
         results_container.controls.append(ft.Divider())
         page.update()
         
-        # Perform search
-        results = search_in_pdfs(query, folder_path)
+        # Perform search (all document types)
+        results = search_in_documents(query, folder_path)
         
         # Clear and show results
         results_container.controls.clear()
@@ -126,35 +160,48 @@ def main(page: ft.Page):
             for i, result in enumerate(results, 1):
                 # Create result card
                 similarity_score = result.get('similarity', 0)
+                def on_card_click(res=result):
+                    file_name = res['file']
+                    folder = res['full_path']
+                    full_file_path = os.path.join(folder, file_name)
+                    open_file_location(full_file_path)
+
                 result_card = ft.Card(
-                    content=ft.Container(
-                        content=ft.Column([
-                            ft.Row([
+                    content=ft.GestureDetector(
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Icon(
+                                        ft.Icons.TITLE if result.get('chunk_type') == 'filename' else ft.Icons.DESCRIPTION,
+                                        color="orange" if result.get('chunk_type') == 'filename' else "blue"
+                                    ),
+                                    ft.Text(
+                                        f"{result['file']} ({result.get('file_type','UNKNOWN').upper()}) - {result['page']}",
+                                        weight=ft.FontWeight.BOLD,
+                                        color="blue"
+                                    ),
+                                    ft.Text(
+                                        f"Similarity: {similarity_score:.3f}",
+                                        size=12,
+                                        color="green",
+                                        weight=ft.FontWeight.BOLD
+                                    )
+                                ]),
                                 ft.Text(
-                                    f"{result['file']} - Page {result['page']}",
-                                    weight=ft.FontWeight.BOLD,
-                                    color="blue"
+                                    result['snippet'],
+                                    size=12,
+                                    color="gray"
                                 ),
                                 ft.Text(
-                                    f"Similarity: {similarity_score:.3f}",
-                                    size=12,
-                                    color="green",
-                                    weight=ft.FontWeight.BOLD
+                                    f"Folder: {result['full_path']}",
+                                    size=10,
+                                    color="gray",
+                                    italic=True
                                 )
-                            ]),
-                            ft.Text(
-                                result['snippet'],
-                                size=12,
-                                color="gray"
-                            ),
-                            ft.Text(
-                                f"File: {result['full_path']}",
-                                size=10,
-                                color="gray",
-                                italic=True
-                            )
-                        ], tight=True),
-                        padding=15
+                            ], tight=True),
+                            padding=15
+                        ),
+                        on_tap=lambda e, r=result: on_card_click(r)
                     ),
                     margin=ft.margin.only(bottom=10)
                 )
@@ -171,9 +218,9 @@ def main(page: ft.Page):
         ft.Column([
             # Header
             ft.Row([
-                ft.Text("SnapIndex Semantic Search", size=24, weight=ft.FontWeight.BOLD)
+                ft.Text("SnapIndex Semantic Document Search", size=24, weight=ft.FontWeight.BOLD)
             ]),
-            ft.Text(f"Searching in: {selected_folder} (FAISS-powered semantic search)", color="gray"),
+            ft.Text(f"Searching in: {selected_folder} (Per-folder FAISS, filename+content)", color="gray"),
             ft.Divider(),
             
             # Search section
