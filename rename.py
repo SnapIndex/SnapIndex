@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import threading
 import traceback
 from datetime import datetime
@@ -14,9 +15,10 @@ from file_loader import find_documents, extract_text_from_file, SUPPORTED_EXTENS
 
 
 # -------------------------
-# LLM configuration
+# Configuration
 # -------------------------
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+DEFAULT_FOLDER = "C:\\Users\\akarsh\\Downloads"
 
 
 class LLMHelper:
@@ -244,6 +246,8 @@ def log_suggestion_line(original_name: str, suggested_base: str, ext: str) -> No
         pass
 
 
+
+
 # -------------------------
 # Data structures for UI state
 # -------------------------
@@ -271,8 +275,29 @@ def main(page: ft.Page) -> None:
     except Exception:
         pass
 
+    # Get source folder from command line arguments or use default
+    if len(sys.argv) >= 2:
+        # Source folder provided via command line (from right-click context)
+        selected_folder = sys.argv[1]
+        print(f"Using provided folder: {selected_folder}")
+    else:
+        # No source folder provided, use default Downloads folder
+        selected_folder = DEFAULT_FOLDER
+        print(f"Using default folder: {DEFAULT_FOLDER}")
+    
+    # Validate source folder
+    if not os.path.exists(selected_folder) or not os.path.isdir(selected_folder):
+        error_content = ft.Column([
+            ft.Text("Error: Invalid source folder", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.RED),
+            ft.Text(f"Path: {selected_folder}", size=12, color=ft.Colors.GREY_600),
+            ft.Text("Please ensure the folder exists and try again.", size=12, color=ft.Colors.GREY_600),
+            ft.Text("Usage: python rename.py [folder_path]", size=12, color=ft.Colors.GREY_600),
+            ft.Text("If no folder is provided, Downloads folder will be used as default.", size=12, color=ft.Colors.GREY_600)
+        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        page.add(error_content)
+        return
+
     entries: List[FileEntry] = []
-    selected_folder: Optional[str] = None
     llm = LLMHelper()
     current_tab = "rename"
 
@@ -303,7 +328,6 @@ def main(page: ft.Page) -> None:
     )
 
     # Folder picker
-    folder_display = ft.Text("No folder selected", size=12, color=ft.Colors.GREY_600)
     picker = ft.FilePicker()
     page.overlay.append(picker)
 
@@ -318,18 +342,32 @@ def main(page: ft.Page) -> None:
 
     picker.on_result = on_folder_picked
 
-    choose_btn = ft.ElevatedButton(
-        "Choose Folder",
-        icon=ft.Icons.FOLDER_OPEN,
-        on_click=lambda _: picker.get_directory_path(),
-        bgcolor=ft.Colors.GREEN_600,
-        color=ft.Colors.WHITE,
-        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), padding=ft.padding.symmetric(horizontal=20, vertical=12), elevation=3, shadow_color=ft.Colors.GREEN_800),
-    )
+    # Determine if using default folder or provided folder
+    is_default_folder = selected_folder == DEFAULT_FOLDER
+    section_title = "Source Folder (Default - Downloads)" if is_default_folder else "Source Folder (Pre-selected)"
+    
+    # Folder display (read-only since it's pre-set)
+    folder_display = ft.Text(f"Source: {selected_folder}", size=12, color=ft.Colors.GREEN_600, weight=ft.FontWeight.BOLD)
 
     folder_section = ft.Container(
-        content=ft.Row([choose_btn, folder_display], alignment=ft.MainAxisAlignment.START, spacing=10),
+        content=ft.Column([
+            ft.Icon(ft.Icons.FOLDER, color=ft.Colors.GREEN_600),
+            folder_display,
+            ft.Text("💡 Tip: You can also run 'python rename.py <folder_path>' to rename files in a specific folder", 
+                    size=10, color=ft.Colors.GREY_500, italic=True) if is_default_folder else ft.Text(""),
+            ft.ElevatedButton(
+                "Choose Different Folder",
+                icon=ft.Icons.FOLDER_OPEN,
+                on_click=lambda _: picker.get_directory_path(),
+                bgcolor=ft.Colors.GREEN_600,
+                color=ft.Colors.WHITE,
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8), padding=ft.padding.symmetric(horizontal=20, vertical=12), elevation=3, shadow_color=ft.Colors.GREEN_800),
+            )
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.padding.only(bottom=20),
+        bgcolor=ft.Colors.GREEN_50,
+        border_radius=8,
+        border=ft.border.all(1, ft.Colors.GREEN_200)
     )
 
     # Two-column lists
@@ -596,6 +634,10 @@ def main(page: ft.Page) -> None:
     content_container = ft.Container(content=root, expand=True, padding=20)
 
     page.add(ft.Row([sidebar, content_container], expand=True))
+    
+    # Automatically load files from the default folder
+    if selected_folder:
+        load_files()
 
 
 if __name__ == "__main__":
