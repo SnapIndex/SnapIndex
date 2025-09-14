@@ -521,7 +521,7 @@ def main(page: ft.Page):
         # Search button
         search_btn = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.SEARCH, color="blue"),
+                ft.Icon(ft.Icons.SEARCH, color="black"),
                 ft.Text("Search", weight=ft.FontWeight.BOLD if current_tab == "search" else ft.FontWeight.NORMAL)
             ]),
             bgcolor="#f5f7fa" if current_tab == "search" else "white",
@@ -534,7 +534,7 @@ def main(page: ft.Page):
         # Organize button
         organize_btn = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.FOLDER_OPEN, color="green"),
+                ft.Icon(ft.Icons.FOLDER_OPEN, color="black"),
                 ft.Text("Organize", weight=ft.FontWeight.BOLD if current_tab == "organize" else ft.FontWeight.NORMAL)
             ]),
             bgcolor="#f5f7fa" if current_tab == "organize" else "white",
@@ -547,7 +547,7 @@ def main(page: ft.Page):
         # Rename button
         rename_btn = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.EDIT, color="orange"),
+                ft.Icon(ft.Icons.EDIT, color="black"),
                 ft.Text("Rename", weight=ft.FontWeight.BOLD if current_tab == "rename" else ft.FontWeight.NORMAL)
             ]),
             bgcolor="#f5f7fa" if current_tab == "rename" else "white",
@@ -560,7 +560,7 @@ def main(page: ft.Page):
         # Settings button
         settings_btn = ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.SETTINGS, color="gray"),
+                ft.Icon(ft.Icons.SETTINGS, color="black"),
                 ft.Text("Settings", weight=ft.FontWeight.BOLD if current_tab == "settings" else ft.FontWeight.NORMAL)
             ]),
             bgcolor="#f5f7fa" if current_tab == "settings" else "white",
@@ -582,7 +582,7 @@ def main(page: ft.Page):
                         ),
                         ft.Text("SnapIndex", size=20, weight=ft.FontWeight.BOLD)
                     ]),
-                    padding=10
+                    padding=ft.padding.only(left=10, right=10, top=10, bottom=0)
                 ),
                 ft.Divider(),
                 *sidebar_buttons
