@@ -11,7 +11,7 @@ selected_folder = "C:\\Users\\akarsh\\Downloads"
 current_tab = "search"
 db_path = "./faiss_database"
 
-def search_in_documents(query, folder_path):
+def search_in_documents(query, folder_path, progress_callback=None):
     """Search for query text using FAISS semantic search across all document types"""
     try:
         # Create a unique database path for each folder (avoid overlaps across same-named folders)
@@ -23,10 +23,10 @@ def search_in_documents(query, folder_path):
         # Check if database exists, if not create it, otherwise update incrementally
         if not os.path.exists(folder_db_path):
             print(f"Creating new FAISS database for folder: {folder_path}")
-            create_faiss_db(folder_path, folder_db_path, incremental=False)
+            create_faiss_db(folder_path, folder_db_path, incremental=False, progress_callback=progress_callback)
         else:
             print(f"Updating FAISS database incrementally for folder: {folder_path}")
-            create_faiss_db(folder_path, folder_db_path, incremental=True)
+            create_faiss_db(folder_path, folder_db_path, incremental=True, progress_callback=progress_callback)
         
         # Use FAISS search and return results in the expected format
         return _get_faiss_results(query, folder_db_path, k=10, folder_path=folder_path)
@@ -36,9 +36,9 @@ def search_in_documents(query, folder_path):
         return []
 
 # Backward compatibility
-def search_in_pdfs(query, folder_path):
+def search_in_pdfs(query, folder_path, progress_callback=None):
     """Backward compatibility - same as search_in_documents"""
-    return search_in_documents(query, folder_path)
+    return search_in_documents(query, folder_path, progress_callback)
 
 def _get_faiss_results(query_string, db_path, k=10, folder_path=None):
     """Get FAISS search results using functions from simple_faiss.py"""
@@ -118,6 +118,67 @@ def open_file_location(file_path):
 
 def create_search_content(file_picker):
     """Create search tab content"""
+    # Progress bar components (will be updated from main function)
+    progress_bar = ft.ProgressBar(
+        value=0, 
+        visible=False, 
+        width=500,
+        color=ft.Colors.ORANGE,
+        bgcolor=ft.Colors.GREY_300,
+        bar_height=12
+    )
+    progress_text = ft.Text(
+        "Processing documents...", 
+        visible=False, 
+        color=ft.Colors.ORANGE,
+        size=16,
+        weight=ft.FontWeight.BOLD
+    )
+    progress_percentage = ft.Text(
+        "0%", 
+        visible=False, 
+        color=ft.Colors.ORANGE,
+        size=18,
+        weight=ft.FontWeight.BOLD
+    )
+    progress_time_remaining = ft.Text(
+        "Calculating time remaining...", 
+        visible=False, 
+        color=ft.Colors.GREY_700,
+        size=13
+    )
+    progress_description = ft.Text(
+        "Please wait while we process your documents...",
+        visible=False,
+        color=ft.Colors.GREY_600,
+        size=12,
+        italic=True
+    )
+    progress_container = ft.Container(
+        content=ft.Column([
+            progress_text,
+            ft.Row([
+                progress_bar,
+                progress_percentage
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
+            progress_time_remaining,
+            progress_description
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12),
+        visible=False,
+        padding=25,
+        bgcolor=ft.Colors.WHITE,
+        border_radius=12,
+        border=ft.border.all(2, ft.Colors.ORANGE),
+        shadow=ft.BoxShadow(
+            spread_radius=2,
+            blur_radius=8,
+            color=ft.Colors.GREY_400,
+            offset=ft.Offset(0, 2)
+        )
+    )
+    
+    print(f"DEBUG: Created progress components - Container: {progress_container}, Text: {progress_text}, Bar: {progress_bar}")
+    
     def perform_search(e, search_field, results_container):
         query = search_field.value.strip()
         if not query:
@@ -287,9 +348,10 @@ def create_search_content(file_picker):
         expand=True
     )
 
-    return ft.Column([
+    search_content = ft.Column([
         header,
         folder_section,
+        progress_container,
         ft.Row([
             search_field,
             search_button
@@ -301,6 +363,9 @@ def create_search_content(file_picker):
             padding=10
         )
     ], expand=True, scroll=ft.ScrollMode.AUTO)
+    
+    # Return both the content and progress components for external access
+    return search_content, progress_bar, progress_text, progress_container, progress_percentage, progress_time_remaining, progress_description
 
 def create_organize_content():
     """Create organize tab content"""
@@ -527,16 +592,156 @@ def main(page: ft.Page):
             border=ft.border.only(right=ft.BorderSide(1, "gray"))
         )
     
+    # Global variables to store progress components
+    global_progress_bar = None
+    global_progress_text = None
+    global_progress_container = None
+    global_progress_percentage = None
+    global_progress_time_remaining = None
+    global_progress_description = None
+    
+    # Time tracking for progress estimation
+    progress_start_time = None
+    last_progress_time = None
+    last_progress_value = 0
+    
     def get_content_for_tab(tab_name):
+        nonlocal global_progress_bar, global_progress_text, global_progress_container, global_progress_percentage, global_progress_time_remaining, global_progress_description
+        
         if tab_name == "search":
-            return create_search_content(file_picker)
+            content, progress_bar, progress_text, progress_container, progress_percentage, progress_time_remaining, progress_description = create_search_content(file_picker)
+            # Store progress components globally
+            global_progress_bar = progress_bar
+            global_progress_text = progress_text
+            global_progress_container = progress_container
+            global_progress_percentage = progress_percentage
+            global_progress_time_remaining = progress_time_remaining
+            global_progress_description = progress_description
+            print(f"DEBUG: Progress components stored - Container: {global_progress_container}, Text: {global_progress_text}, Bar: {global_progress_bar}")
+            return content
         elif tab_name == "organize":
             return create_organize_content()
         elif tab_name == "rename":
             return create_rename_content()
         elif tab_name == "settings":
             return create_settings_content()
-        return create_search_content(file_picker)
+        else:
+            content, progress_bar, progress_text, progress_container, progress_percentage, progress_time_remaining, progress_description = create_search_content(file_picker)
+            # Store progress components globally
+            global_progress_bar = progress_bar
+            global_progress_text = progress_text
+            global_progress_container = progress_container
+            global_progress_percentage = progress_percentage
+            global_progress_time_remaining = progress_time_remaining
+            global_progress_description = progress_description
+            return content
+    
+    def show_progress(message="Processing documents..."):
+        """Show progress bar with message"""
+        nonlocal progress_start_time, last_progress_time, last_progress_value
+        import time
+        
+        print(f"DEBUG: show_progress called with message: {message}")
+        if global_progress_container and global_progress_text and global_progress_bar:
+            print("DEBUG: Progress components found, updating...")
+            global_progress_text.value = message
+            global_progress_bar.value = 0
+            global_progress_percentage.value = "0%"
+            global_progress_time_remaining.value = "Calculating time remaining..."
+            
+            # Make all components visible
+            global_progress_container.visible = True
+            global_progress_text.visible = True
+            global_progress_bar.visible = True
+            global_progress_percentage.visible = True
+            global_progress_time_remaining.visible = True
+            if global_progress_description:
+                global_progress_description.visible = True
+            
+            # Initialize time tracking
+            progress_start_time = time.time()
+            last_progress_time = progress_start_time
+            last_progress_value = 0
+            
+            print(f"DEBUG: Progress container visible set to: {global_progress_container.visible}")
+            page.update()
+        else:
+            print("DEBUG: Progress components not found!")
+            print(f"DEBUG: Container: {global_progress_container}, Text: {global_progress_text}, Bar: {global_progress_bar}")
+    
+    def update_progress(value, message=None):
+        """Update progress bar value and optionally message"""
+        nonlocal progress_start_time, last_progress_time, last_progress_value
+        import time
+        
+        print(f"DEBUG: update_progress called with value: {value}, message: {message}")
+        if global_progress_bar and global_progress_percentage and global_progress_time_remaining:
+            global_progress_bar.value = value
+            
+            # Update percentage
+            percentage = int(value * 100)
+            global_progress_percentage.value = f"{percentage}%"
+            
+            # Update message
+            if message and global_progress_text:
+                global_progress_text.value = message
+            
+            # Calculate time remaining
+            current_time = time.time()
+            if progress_start_time and value > 0:
+                elapsed_time = current_time - progress_start_time
+                if value > last_progress_value and elapsed_time > 0:
+                    # Estimate total time based on current progress
+                    estimated_total_time = elapsed_time / value
+                    remaining_time = estimated_total_time - elapsed_time
+                    
+                    if remaining_time > 60:
+                        minutes = int(remaining_time // 60)
+                        seconds = int(remaining_time % 60)
+                        global_progress_time_remaining.value = f"Estimated time remaining: {minutes}m {seconds}s"
+                    elif remaining_time > 10:
+                        global_progress_time_remaining.value = f"Estimated time remaining: {int(remaining_time)}s"
+                    elif remaining_time > 0:
+                        global_progress_time_remaining.value = "Almost done..."
+                    else:
+                        global_progress_time_remaining.value = "Finishing up..."
+                else:
+                    global_progress_time_remaining.value = "Calculating time remaining..."
+            
+            last_progress_time = current_time
+            last_progress_value = value
+            page.update()
+            print(f"DEBUG: Progress updated to {value} ({percentage}%)")
+        else:
+            print("DEBUG: global_progress_bar not found in update_progress!")
+    
+    def hide_progress():
+        """Hide progress bar"""
+        nonlocal progress_start_time, last_progress_time, last_progress_value
+        print("DEBUG: hide_progress called")
+        if global_progress_container:
+            # Hide all progress components
+            global_progress_container.visible = False
+            if global_progress_text:
+                global_progress_text.visible = False
+            if global_progress_bar:
+                global_progress_bar.visible = False
+            if global_progress_percentage:
+                global_progress_percentage.visible = False
+            if global_progress_time_remaining:
+                global_progress_time_remaining.visible = False
+            if global_progress_description:
+                global_progress_description.visible = False
+            
+            # Reset time tracking
+            progress_start_time = None
+            last_progress_time = None
+            last_progress_value = 0
+            
+            page.update()
+            print("DEBUG: Progress hidden")
+        else:
+            print("DEBUG: global_progress_container not found in hide_progress!")
     
     # Create main layout
     sidebar = create_sidebar()
@@ -551,9 +756,48 @@ def main(page: ft.Page):
         if e.path:
             global selected_folder
             selected_folder = e.path
-            # Update the content to refresh folder display
-            content_container.content = get_content_for_tab(current_tab)
-            content_container.update()
+            
+            # Show progress bar immediately
+            show_progress("Setting up search database...")
+            
+            # Process folder with real progress tracking
+            import threading
+            
+            def process_folder():
+                try:
+                    # Create a unique database path for the folder
+                    abs_folder = os.path.abspath(selected_folder)
+                    folder_hash = hashlib.sha1(abs_folder.encode("utf-8")).hexdigest()[:12]
+                    safe_name = os.path.basename(abs_folder) or "root"
+                    folder_db_path = os.path.join("./faiss_databases", f"{safe_name}_{folder_hash}")
+                    
+                    # Check if database exists and create/update it with real progress
+                    if not os.path.exists(folder_db_path):
+                        print(f"Creating new FAISS database for folder: {selected_folder}")
+                        create_faiss_db(selected_folder, folder_db_path, incremental=False, progress_callback=update_progress)
+                    else:
+                        print(f"Updating FAISS database incrementally for folder: {selected_folder}")
+                        create_faiss_db(selected_folder, folder_db_path, incremental=True, progress_callback=update_progress)
+                    
+                    # Wait a moment to show completion, then hide progress bar
+                    import time
+                    time.sleep(1)
+                    hide_progress()
+                    
+                    # Update the content to refresh folder display (but don't regenerate progress components)
+                    if current_tab == "search":
+                        # Just update the folder display text, don't recreate the whole content
+                        content_container.content = get_content_for_tab(current_tab)
+                        content_container.update()
+                    
+                except Exception as ex:
+                    hide_progress()
+                    print(f"Error processing folder: {ex}")
+            
+            # Run in background thread to avoid blocking UI
+            thread = threading.Thread(target=process_folder)
+            thread.daemon = True
+            thread.start()
     
     file_picker.on_result = on_folder_picked
     
