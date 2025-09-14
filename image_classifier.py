@@ -5,7 +5,7 @@ Simple Image Classification App using Pillow and Hugging Face Transformers
 import torch
 from PIL import Image
 import requests
-from transformers import ViTImageProcessor, ViTForImageClassification
+from transformers import AutoImageProcessor, AutoModelForImageClassification
 import numpy as np
 from typing import List, Tuple, Optional
 import io
@@ -24,16 +24,41 @@ class ImageClassifier:
             model_name: Hugging Face model name for image classification
         """
         self.model_name = model_name
+        
+        # Prefer CPU for broad compatibility
         self.device = torch.device("cpu")
         
-        # Load the processor and model
-        print(f"Loading model: {model_name}")
-        self.processor = ViTImageProcessor.from_pretrained(model_name)
-        self.model = ViTForImageClassification.from_pretrained(model_name)
-        self.model.to(self.device)
-        self.model.eval()
+        # Try a sequence of compatible models to improve robustness
+        candidate_models = [
+            model_name,
+            "facebook/deit-base-distilled-patch16-224",
+            "microsoft/resnet-50",
+        ]
+        last_error: Optional[Exception] = None
         
-        print(f"Model loaded successfully on {self.device}")
+        for candidate in candidate_models:
+            try:
+                print(f"Loading model: {candidate}")
+                # Ensure weights are fully materialized on CPU to avoid meta-tensor issues
+                self.processor = AutoImageProcessor.from_pretrained(candidate, local_files_only=False)
+                self.model = AutoModelForImageClassification.from_pretrained(
+                    candidate,
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=False,
+                )
+                # Do NOT call .to() to avoid moving meta tensors; model is already on CPU
+                self.model.eval()
+                self.model_name = candidate
+                print(f"Model loaded successfully on cpu: {candidate}")
+                break
+            except Exception as e:
+                last_error = e
+                print(f"Failed to load model '{candidate}': {e}")
+                self.processor = None
+                self.model = None
+        
+        if self.processor is None or self.model is None:
+            raise RuntimeError(f"Could not initialize image classifier: {last_error}")
     
     def load_image_from_path(self, image_path: str) -> Image.Image:
         """
@@ -86,7 +111,21 @@ class ImageClassifier:
             Preprocessed tensor
         """
         inputs = self.processor(images=image, return_tensors="pt")
-        return inputs.pixel_values.to(self.device)
+        # Keep tensors on CPU and avoid boolean evaluation of tensors
+        if "pixel_values" in inputs:
+            pixel_values = inputs["pixel_values"]
+        elif "inputs" in inputs:
+            pixel_values = inputs["inputs"]
+        else:
+            # Some processors may return a dict with different key naming
+            # Fallback to the first tensor-like value
+            for v in inputs.values():
+                if isinstance(v, torch.Tensor):
+                    pixel_values = v
+                    break
+            else:
+                raise RuntimeError("Processor did not return pixel_values tensor")
+        return pixel_values
     
     def predict(self, image: Image.Image, top_k: int = 5) -> List[Tuple[str, float]]:
         """
@@ -104,13 +143,16 @@ class ImageClassifier:
         
         # Get predictions
         with torch.no_grad():
-            outputs = self.model(inputs)
+            # Pass as keyword arg to match model signature
+            outputs = self.model(pixel_values=inputs)
             logits = outputs.logits
             probabilities = torch.nn.functional.softmax(logits, dim=-1)
         
         # Get top predictions
-        top_indices = torch.topk(probabilities, top_k).indices[0]
-        top_probs = torch.topk(probabilities, top_k).values[0]
+        k = min(top_k, probabilities.shape[-1])
+        topk = torch.topk(probabilities, k)
+        top_indices = topk.indices[0]
+        top_probs = topk.values[0]
         
         # Get class labels
         class_labels = self.model.config.id2label

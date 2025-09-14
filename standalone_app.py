@@ -284,13 +284,20 @@ def _get_faiss_results(query_string, db_path, k=10, folder_path=None):
         
         # Only include results above the threshold
         if similarity >= threshold:
-            # Determine file type from the file name
+            # Determine file type from the file name or metadata
             file_name = meta["pdf_name"]
-            file_type = get_file_category(file_name)
+            file_type = meta.get("file_type", "unknown")
+            if file_type == "unknown":
+                file_type = get_file_category(file_name)
             
-            # Determine if this is a filename match or content match
+            # Determine if this is a filename match, content match, or image match
             chunk_type = meta.get("chunk_type", "content")
-            page_display = "Filename" if chunk_type == "filename" else f"Page {meta['page_number']}"
+            if chunk_type == "filename":
+                page_display = "Filename"
+            elif chunk_type in ["image_description", "image_keyword", "image_filename", "image_content", "image_searchable", "image_possible"]:
+                page_display = "Image Analysis"
+            else:
+                page_display = f"Page {meta['page_number']}"
             
             results.append({
                 "file": file_name,
@@ -446,8 +453,12 @@ def create_search_content(file_picker):
                             content=ft.Column([
                                 ft.Row([
                                     ft.Icon(
-                                        ft.Icons.TITLE if result.get('chunk_type') == 'filename' else ft.Icons.DESCRIPTION, 
-                                        color="orange" if result.get('chunk_type') == 'filename' else "blue"
+                                        ft.Icons.TITLE if result.get('chunk_type') == 'filename' 
+                                        else ft.Icons.IMAGE if result.get('file_type') == 'image'
+                                        else ft.Icons.DESCRIPTION, 
+                                        color="orange" if result.get('chunk_type') == 'filename' 
+                                        else "purple" if result.get('file_type') == 'image'
+                                        else "blue"
                                     ),
                                 ft.Text(
                                     f"{result['file']} ({result.get('file_type', 'unknown').upper()}) - {result['page']}",
@@ -537,15 +548,15 @@ def create_search_content(file_picker):
     
     # Search section
     search_field = ft.TextField(
-        label="Search All Documents",
-        hint_text="Search across PDFs, Word docs, Excel, PowerPoint, and text files...",
+        label="Search All Documents & Images",
+        hint_text="Search across PDFs, Word docs, Excel, PowerPoint, text files, and images...",
         expand=True,
         prefix_icon=ft.Icons.SEARCH,
         on_submit=lambda e: perform_search(e, search_field, results_container)
     )
     
     search_button = ft.ElevatedButton(
-        "Search Documents",
+        "Search All Files",
         icon=ft.Icons.SEARCH,
         on_click=lambda e: perform_search(e, search_field, results_container),
         bgcolor=ft.Colors.GREEN,

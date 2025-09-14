@@ -116,7 +116,8 @@ def extract_text_parallel(documents, progress_callback=None):
                         "pdf_name": page_data["file_name"],  # Keep same key for compatibility
                         "page_number": page_data["page_number"],
                         "text": page_data["text"],
-                        "chunk_type": page_data.get("chunk_type", "content")
+                        "chunk_type": page_data.get("chunk_type", "content"),
+                        "file_type": page_data.get("file_type", "unknown")
                     })
             
             # Update progress
@@ -284,7 +285,8 @@ def create_faiss_db(folder_path, save_path=None, incremental=True, progress_call
                         "pdf_name": page_data["file_name"],  # Keep same key for compatibility
                         "page_number": page_data["page_number"],
                         "text": page_data["text"],
-                        "chunk_type": page_data.get("chunk_type", "content")
+                        "chunk_type": page_data.get("chunk_type", "content"),
+                        "file_type": page_data.get("file_type", "unknown")
                     })
     
     print(f"Extracted {len(all_texts)} text chunks from {len(documents)} files")
