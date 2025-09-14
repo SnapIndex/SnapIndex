@@ -14,6 +14,215 @@ selected_folder = "C:\\Users\\akarsh\\Downloads"
 current_tab = "search"
 db_path = "./faiss_database"
 
+# File extension categories - shared across the application
+# Order matters: more specific categories should come first to avoid conflicts
+FILE_CATEGORIES = {
+    # 3D Models first (to catch .obj before Executables)
+    '3D_Models': [
+        '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.x3d', 
+        '.wrl', '.ply', '.stl', '.off', '.3dm', '.3dmf', '.x', '.ase', 
+        '.dxf', '.ifc', '.nff', '.smd', '.vta', '.mdl', '.md2', '.md3', '.pk3', 
+        '.mdc', '.md5', '.iqm', '.b3d', '.q3d', '.q3s', '.ter', '.hmp', '.ndo'
+    ],
+    # Executables second (to catch .dmg, .bat, .sh, .msi before other categories)
+    'Executables': [
+        '.exe', '.msi', '.dmg', '.app', '.bat', '.sh', '.cmd', 
+        '.com', '.scr', '.pif', '.run', '.bin', '.appimage', '.snap', '.flatpak', 
+        '.apk', '.ipa', '.xap', '.msix', '.appx', '.pyc', '.pyo', '.so', '.dll', 
+        '.dylib', '.a', '.lib', '.o', '.elf'
+    ],
+    # Code third (to catch .xml, .json, .yaml, .ini, .cfg, .conf before Documents)
+    'Code': [
+        '.py', '.js', '.html', '.htm', '.css', '.java', '.cpp', '.c', '.h', '.hpp', 
+        '.php', '.rb', '.go', '.rs', '.sql', '.ts', '.tsx', '.jsx', '.vue', '.svelte', 
+        '.scss', '.sass', '.less', '.styl', '.coffee', '.dart', '.swift', '.kt', 
+        '.scala', '.clj', '.hs', '.ml', '.fs', '.vb', '.cs', '.asm', '.s', '.m', 
+        '.mm', '.pl', '.pm', '.r', '.jl', '.lua', '.tcl', '.bash', '.zsh', 
+        '.fish', '.ps1', '.psm1', '.psd1', '.vbs', '.reg', '.ini', 
+        '.cfg', '.conf', '.yaml', '.yml', '.json', '.xml', '.toml', '.dockerfile', 
+        '.makefile', '.cmake', '.gradle', '.maven', '.pom', '.sbt', '.cabal', 
+        '.haskell', '.elm', '.ex', '.exs', '.erl', '.hrl', '.fsx', '.fsi', '.fs', 
+        '.f90', '.f95', '.f03', '.f08', '.ada', '.adb', '.ads', '.nim', '.cr', 
+        '.crystal', '.zig', '.odin', '.v', '.pas', '.pp', '.dpr', '.dfm', '.lfm'
+    ],
+    # Archives fourth (to catch .jar, .war, .ear before Executables)
+    'Archives': [
+        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso', 
+        '.pkg', '.deb', '.cab', '.arj', '.lzh', '.ace', '.z', 
+        '.cpio', '.shar', '.lbr', '.mar', '.s7z', '.alz', '.arc', 
+        '.b1', '.ba', '.bh', '.car', '.cfs', '.cpt', '.dar', '.dd', 
+        '.dgc', '.ear', '.gca', '.ha', '.hki', '.ice', '.jar', '.kgb', 
+        '.lbr', '.lha', '.lzh', '.lzx', '.pak', '.partimg', '.pea', '.pim', 
+        '.pit', '.qda', '.rk', '.sda', '.sea', '.sen', '.sfx', '.shk', 
+        '.sit', '.sitx', '.sqx', '.tbz2', '.tgz', '.tlz', '.txz', '.tz', 
+        '.uc2', '.uha', '.uue', '.war', '.wim', '.xar', '.xx', '.yz1', 
+        '.zipx', '.zoo', '.zpaq', '.zz'
+    ],
+    # Documents fifth (catch-all for text-based files)
+    'Documents': [
+        '.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx', 
+        '.csv', '.md', '.tex', '.pages', '.numbers', '.key', '.odp', '.ods', '.odg', 
+        '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.lit', '.lrf', '.pdb', '.prc', 
+        '.tcr', '.trc', '.xps', '.oxps', '.djvu', '.djv', '.chm', '.hlp', '.inf', 
+        '.log'
+    ],
+    # Images
+    'Images': [
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.webp', 
+        '.ico', '.psd', '.ai', '.eps', '.raw', '.cr2', '.nef', '.orf', '.sr2', 
+        '.arw', '.dng', '.heic', '.heif', '.avif', '.jfif', '.pbm', '.pgm', '.ppm', 
+        '.pnm', '.xbm', '.xpm', '.pcx', '.tga', '.exr', '.hdr', '.pic', '.pict'
+    ],
+    # Videos
+    'Videos': [
+        '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.m4v', '.3gp', 
+        '.ogv', '.mpg', '.mpeg', '.m2v', '.m4p', '.m4b', '.3g2', '.asf', '.rm', 
+        '.rmvb', '.vob', '.ogm', '.divx', '.xvid', '.f4v', '.f4p', '.f4a', '.f4b'
+    ],
+    # Audio
+    'Audio': [
+        '.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus', '.amr', 
+        '.aiff', '.au', '.ra', '.ram', '.wv', '.ape', '.ac3', '.dts', '.mp2', 
+        '.mpa', '.mka', '.spx', '.tta', '.tak', '.ofr', '.ofs', '.ofm', '.rka'
+    ],
+    # Fonts
+    'Fonts': [
+        '.ttf', '.otf', '.woff', '.woff2', '.eot', '.fon', '.fnt', '.pfb', '.pfa', 
+        '.afm', '.pfm', '.ttc', '.dfont', '.bdf', '.pcf', '.snf', '.psf', '.psfu'
+    ],
+    # Database
+    'Database': [
+        '.db', '.sqlite', '.sqlite3', '.mdb', '.accdb', '.frm', '.myd', '.myi', 
+        '.ibd', '.dbf', '.odb', '.ldb', '.sdf', '.db3', '.db2', '.dbs', 
+        '.wdb', '.fdb', '.gdb', '.nsf', '.fp7', '.fp5', '.fp3', '.fmp12', '.fmp7'
+    ]
+}
+
+def get_file_category(filename):
+    """
+    Determine file category based on extension with improved logic
+    
+    Args:
+        filename (str): The filename to categorize
+        
+    Returns:
+        str: The category name or 'Other' if not found
+    """
+    if not filename or not isinstance(filename, str):
+        return 'Other'
+    
+    # Handle files without extensions
+    if '.' not in filename:
+        return 'Other'
+    
+    # Get the last extension (handle files like file.tar.gz)
+    parts = filename.lower().split('.')
+    if len(parts) < 2:
+        return 'Other'
+    
+    # Check for multi-part extensions (like .tar.gz, .tar.bz2)
+    ext = '.' + parts[-1]
+    ext2 = '.' + '.'.join(parts[-2:]) if len(parts) >= 2 else ''
+    
+    # First check for multi-part extensions
+    for category, extensions in FILE_CATEGORIES.items():
+        if ext2 in extensions:
+            return category
+    
+    # Then check for single extensions
+    for category, extensions in FILE_CATEGORIES.items():
+        if ext in extensions:
+            return category
+    
+    # Try to get MIME type as fallback (if python-magic is available)
+    try:
+        import magic
+        mime_type = magic.from_file(filename, mime=True)
+        return _categorize_by_mime_type(mime_type)
+    except (ImportError, Exception):
+        # python-magic not available or file doesn't exist, continue with extension-based logic
+        pass
+    
+    return 'Other'
+
+def _categorize_by_mime_type(mime_type):
+    """
+    Categorize file by MIME type as fallback when extension-based categorization fails
+    
+    Args:
+        mime_type (str): The MIME type of the file
+        
+    Returns:
+        str: The category name or 'Other' if not found
+    """
+    if not mime_type:
+        return 'Other'
+    
+    mime_type = mime_type.lower()
+    
+    # Document types
+    if any(doc_type in mime_type for doc_type in [
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats',
+        'text/plain', 'text/rtf', 'application/rtf', 'text/csv', 'text/markdown',
+        'application/vnd.ms-excel', 'application/vnd.ms-powerpoint',
+        'application/vnd.oasis.opendocument', 'application/epub+zip'
+    ]):
+        return 'Documents'
+    
+    # Image types
+    if mime_type.startswith('image/'):
+        return 'Images'
+    
+    # Video types
+    if mime_type.startswith('video/'):
+        return 'Videos'
+    
+    # Audio types
+    if mime_type.startswith('audio/'):
+        return 'Audio'
+    
+    # Archive types
+    if any(arch_type in mime_type for arch_type in [
+        'application/zip', 'application/x-rar', 'application/x-7z',
+        'application/gzip', 'application/x-bzip2', 'application/x-tar',
+        'application/x-iso9660-image', 'application/vnd.ms-cab-compressed'
+    ]):
+        return 'Archives'
+    
+    # Code types
+    if any(code_type in mime_type for code_type in [
+        'text/html', 'text/css', 'text/javascript', 'application/javascript',
+        'text/x-python', 'text/x-java', 'text/x-c', 'text/x-c++',
+        'application/x-php', 'text/x-ruby', 'text/x-go', 'text/x-rust',
+        'text/x-sql', 'application/json', 'application/xml', 'text/xml',
+        'text/yaml', 'application/x-yaml'
+    ]):
+        return 'Code'
+    
+    # Executable types
+    if any(exec_type in mime_type for exec_type in [
+        'application/x-executable', 'application/x-msdownload',
+        'application/x-msdos-program', 'application/x-sharedlib',
+        'application/x-object', 'application/x-archive'
+    ]):
+        return 'Executables'
+    
+    # Font types
+    if any(font_type in mime_type for font_type in [
+        'font/', 'application/font-woff', 'application/font-woff2',
+        'application/vnd.ms-fontobject'
+    ]):
+        return 'Fonts'
+    
+    # Database types
+    if any(db_type in mime_type for db_type in [
+        'application/x-sqlite3', 'application/vnd.ms-access',
+        'application/x-dbase', 'application/x-msaccess'
+    ]):
+        return 'Database'
+    
+    return 'Other'
+
 def search_in_documents(query, folder_path, progress_callback=None):
     """Search for query text using FAISS semantic search across all document types"""
     try:
@@ -77,8 +286,7 @@ def _get_faiss_results(query_string, db_path, k=10, folder_path=None):
         if similarity >= threshold:
             # Determine file type from the file name
             file_name = meta["pdf_name"]
-            file_ext = os.path.splitext(file_name)[1].lower()
-            file_type = file_ext[1:] if file_ext else "unknown"
+            file_type = get_file_category(file_name)
             
             # Determine if this is a filename match or content match
             chunk_type = meta.get("chunk_type", "content")
@@ -450,24 +658,7 @@ def create_organize_content(file_picker):
         )
     )
     
-    # File extension categories
-    file_categories = {
-        'Documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.md'],
-        'Images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.svg', '.webp', '.ico', '.psd'],
-        'Videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.m4v', '.3gp', '.ogv'],
-        'Audio': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus', '.amr'],
-        'Archives': ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso'],
-        'Code': ['.py', '.js', '.html', '.css', '.java', '.cpp', '.c', '.php', '.rb', '.go', '.rs', '.sql'],
-        'Executables': ['.exe', '.msi', '.deb', '.rpm', '.dmg', '.app', '.bat', '.sh']
-    }
-    
-    def get_file_category(filename):
-        """Determine file category based on extension"""
-        ext = os.path.splitext(filename)[1].lower()
-        for category, extensions in file_categories.items():
-            if ext in extensions:
-                return category
-        return 'Other'
+    # Use the shared file categorization function
     
     def create_tree_node(text, icon=None, color=None, indent=0):
         """Create a tree node with proper indentation and styling"""
@@ -501,67 +692,113 @@ def create_organize_content(file_picker):
             # Tree view not added to page yet, skip update
             pass
     
+    # Dictionary to store files by category for proper tree display
+    files_by_category = {}
+    
     def update_tree_view_with_move(source_path, dest_path, category):
-        """Add a file move to the tree view"""
+        """Add a file move to the tree view (collects files for later display)"""
         filename = os.path.basename(source_path)
-        category_name = category if category != "Directories" else "📁 Directories"
         
-        # Add category folder if not already shown
-        category_exists = any(
-            isinstance(control.content, ft.Row) and 
-            len(control.content.controls) > 1 and
-            isinstance(control.content.controls[1], ft.Icon) and
-            category_name in str(control.content.controls[2].value)
-            for control in tree_view.controls
-        )
+        # Debug logging
+        print(f"DEBUG: update_tree_view_with_move called with:")
+        print(f"  source_path: {source_path}")
+        print(f"  dest_path: {dest_path}")
+        print(f"  category: {category}")
+        print(f"  filename: {filename}")
         
-        if not category_exists:
-            category_icon = ft.Icons.FOLDER
-            if category == "Documents":
-                category_icon = ft.Icons.DESCRIPTION
-            elif category == "Images":
-                category_icon = ft.Icons.IMAGE
-            elif category == "Videos":
-                category_icon = ft.Icons.VIDEO_FILE
-            elif category == "Audio":
-                category_icon = ft.Icons.AUDIO_FILE
-            elif category == "Archives":
-                category_icon = ft.Icons.ARCHIVE
-            elif category == "Code":
-                category_icon = ft.Icons.CODE
-            elif category == "Executables":
-                category_icon = ft.Icons.APPS
-            elif category == "Directories":
-                category_icon = ft.Icons.FOLDER_OPEN
-            else:
-                category_icon = ft.Icons.INSERT_DRIVE_FILE
-            
-            category_node = create_tree_node(
-                f"📁 {category_name}",
-                icon=category_icon,
-                color=ft.Colors.BLUE_600,
-                indent=0
-            )
-            add_to_tree_view(category_node)
+        # Add file to the category dictionary
+        if category not in files_by_category:
+            files_by_category[category] = []
+        files_by_category[category].append(filename)
+    
+    def display_tree_view():
+        """Display the tree view with files properly grouped by category"""
+        # Clear the tree view first
+        clear_tree_view()
         
-        # Add file to category
-        file_icon = ft.Icons.INSERT_DRIVE_FILE
-        if category == "Images":
-            file_icon = ft.Icons.IMAGE
-        elif category == "Videos":
-            file_icon = ft.Icons.VIDEO_FILE
-        elif category == "Audio":
-            file_icon = ft.Icons.AUDIO_FILE
-        elif category == "Documents":
-            file_icon = ft.Icons.DESCRIPTION
+        # Define category display order (logical order, not alphabetical)
+        category_order = [
+            "Documents", "Images", "Videos", "Audio", "Archives", 
+            "Code", "Executables", "Fonts", "3D_Models", "Database", 
+            "Directories", "Other"
+        ]
         
-        file_node = create_tree_node(
-            f"📄 {filename}",
-            icon=file_icon,
-            color=ft.Colors.GREY_700,
-            indent=1
-        )
-        add_to_tree_view(file_node)
+        # Add categories and their files in the defined order
+        for category in category_order:
+            if category in files_by_category and files_by_category[category]:
+                # Get category display name and icon
+                category_name = category if category != "Directories" else "📁 Directories"
+                
+                category_icon = ft.Icons.FOLDER
+                if category == "Documents":
+                    category_icon = ft.Icons.DESCRIPTION
+                elif category == "Images":
+                    category_icon = ft.Icons.IMAGE
+                elif category == "Videos":
+                    category_icon = ft.Icons.VIDEO_FILE
+                elif category == "Audio":
+                    category_icon = ft.Icons.AUDIO_FILE
+                elif category == "Archives":
+                    category_icon = ft.Icons.ARCHIVE
+                elif category == "Code":
+                    category_icon = ft.Icons.CODE
+                elif category == "Executables":
+                    category_icon = ft.Icons.APPS
+                elif category == "Fonts":
+                    category_icon = ft.Icons.FONT_DOWNLOAD
+                elif category == "3D_Models":
+                    category_icon = ft.Icons.THREE_D_ROTATION
+                elif category == "Database":
+                    category_icon = ft.Icons.STORAGE
+                elif category == "Directories":
+                    category_icon = ft.Icons.FOLDER_OPEN
+                else:
+                    category_icon = ft.Icons.INSERT_DRIVE_FILE
+                
+                # Add category header
+                category_node = create_tree_node(
+                    f"📁 {category_name} ({len(files_by_category[category])} files)",
+                    icon=category_icon,
+                    color=ft.Colors.BLUE_600,
+                    indent=0
+                )
+                add_to_tree_view(category_node)
+                
+                # Add files under this category (sorted alphabetically within category)
+                sorted_files = sorted(files_by_category[category])
+                for filename in sorted_files:
+                    # Get appropriate file icon
+                    file_icon = ft.Icons.INSERT_DRIVE_FILE
+                    if category == "Images":
+                        file_icon = ft.Icons.IMAGE
+                    elif category == "Videos":
+                        file_icon = ft.Icons.VIDEO_FILE
+                    elif category == "Audio":
+                        file_icon = ft.Icons.AUDIO_FILE
+                    elif category == "Documents":
+                        file_icon = ft.Icons.DESCRIPTION
+                    elif category == "Code":
+                        file_icon = ft.Icons.CODE
+                    elif category == "Archives":
+                        file_icon = ft.Icons.ARCHIVE
+                    elif category == "Executables":
+                        file_icon = ft.Icons.APPS
+                    elif category == "Fonts":
+                        file_icon = ft.Icons.FONT_DOWNLOAD
+                    elif category == "3D_Models":
+                        file_icon = ft.Icons.THREE_D_ROTATION
+                    elif category == "Database":
+                        file_icon = ft.Icons.STORAGE
+                    elif category == "Directories":
+                        file_icon = ft.Icons.FOLDER_OPEN
+                    
+                    file_node = create_tree_node(
+                        f"📄 {filename}",
+                        icon=file_icon,
+                        color=ft.Colors.GREY_700,
+                        indent=1
+                    )
+                    add_to_tree_view(file_node)
     
     
     def organize_files():
@@ -579,7 +816,8 @@ def create_organize_content(file_picker):
             progress_text.value = "Starting file organization..."
             progress_percentage.value = "0%"
             
-            # Clear and initialize tree view
+            # Clear files dictionary and tree view
+            files_by_category.clear()
             clear_tree_view()
             
             # Add initial message to tree view
@@ -629,6 +867,7 @@ def create_organize_content(file_picker):
                     if os.path.isfile(item_path):
                         # It's a file - categorize by extension
                         category = get_file_category(item_name)
+                        print(f"DEBUG: File {item_name} categorized as: {category}")
                         category_dir = os.path.join(destination_folder, category)
                         
                         # Create category directory if it doesn't exist
@@ -706,6 +945,9 @@ def create_organize_content(file_picker):
                 json.dump(rollback_data, f, indent=2)
             
             progress_text.value = f"Organization complete! Processed {processed} items. Rollback info saved."
+            
+            # Display the organized tree view with files grouped by category
+            display_tree_view()
             
             # Add completion message to tree view
             add_to_tree_view(create_tree_node(f"✅ Organization complete! Processed {processed} items.", color=ft.Colors.GREEN_600))
@@ -926,13 +1168,16 @@ def create_organize_content(file_picker):
     categories_info = ft.Container(
         content=ft.Column([
             ft.Text("File Categories:", size=14, weight=ft.FontWeight.BOLD),
-            ft.Text("• Documents: PDF, Word, Excel, PowerPoint, Text files", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Images: JPG, PNG, GIF, SVG, and other image formats", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Videos: MP4, AVI, MOV, and other video formats", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Audio: MP3, WAV, FLAC, and other audio formats", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Archives: ZIP, RAR, 7Z, and other compressed files", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Code: Python, JavaScript, HTML, CSS, and other code files", size=12, color=ft.Colors.GREY_600),
-            ft.Text("• Executables: EXE, MSI, and other executable files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Documents: PDF, Word, Excel, PowerPoint, Text, eBooks, Config files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Images: JPG, PNG, GIF, SVG, RAW, PSD, and other image formats", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Videos: MP4, AVI, MOV, MKV, and other video formats", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Audio: MP3, WAV, FLAC, AAC, and other audio formats", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Archives: ZIP, RAR, 7Z, TAR, and other compressed files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Code: Python, JavaScript, HTML, CSS, and other programming files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Executables: EXE, MSI, APP, and other executable files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Fonts: TTF, OTF, WOFF, and other font files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• 3D Models: OBJ, FBX, STL, and other 3D model files", size=12, color=ft.Colors.GREY_600),
+            ft.Text("• Database: SQLite, Access, and other database files", size=12, color=ft.Colors.GREY_600),
             ft.Text("• Directories: All subdirectories will be moved to 'Directories' folder", size=12, color=ft.Colors.GREY_600),
             ft.Text("• Other: Files with unrecognized extensions", size=12, color=ft.Colors.GREY_600),
         ], spacing=2),
@@ -940,7 +1185,7 @@ def create_organize_content(file_picker):
         bgcolor=ft.Colors.GREY_50,
         border_radius=8,
         border=ft.border.all(1, ft.Colors.GREY_300),
-        height=220
+        height=280
     )
     
     # Rollback info section
