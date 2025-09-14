@@ -294,8 +294,8 @@ def create_search_content(file_picker):
         ),
         border_radius=ft.border_radius.all(15),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        margin=ft.margin.only(left=-20, right=-20, top=-20),
-        padding=ft.padding.only(bottom=20),
+        margin=ft.margin.only(left=-20, right=-20, top=-160),
+        padding=ft.padding.only(bottom=10),
     )
     
     # Folder selection section
