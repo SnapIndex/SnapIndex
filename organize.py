@@ -632,91 +632,10 @@ def create_organize_content(source_folder, file_picker, default_folder):
     # Return content and file picker for overlay
     return organize_content, destination_picker
 
-def create_search_content():
-    """Create search tab content"""
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.SEARCH, color="blue", size=30),
-            ft.Text("Search Documents", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Search through your indexed documents", color="gray"),
-        ft.Divider(),
-        
-        ft.Text("This feature is available in the main SnapIndex application.", 
-                color="orange", size=14, weight=ft.FontWeight.BOLD),
-        ft.Text("To use search functionality, please run 'python standalone_app.py'", 
-                color="gray", size=12),
-        
-        ft.ElevatedButton(
-            "Open Main Application",
-            icon=ft.Icons.OPEN_IN_NEW,
-            bgcolor="blue",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=lambda e: print("Redirect to main app")
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
-def create_rename_content():
-    """Create rename tab content"""
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.EDIT, color="orange", size=30),
-            ft.Text("Rename PDFs", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Rename and organize your PDF files", color="gray"),
-        ft.Divider(),
-        
-        ft.Text("This feature is available in the main SnapIndex application.", 
-                color="orange", size=14, weight=ft.FontWeight.BOLD),
-        ft.Text("To use rename functionality, please run 'python standalone_app.py'", 
-                color="gray", size=12),
-        
-        ft.ElevatedButton(
-            "Open Main Application",
-            icon=ft.Icons.OPEN_IN_NEW,
-            bgcolor="orange",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=lambda e: print("Redirect to main app")
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
-def create_settings_content():
-    """Create settings tab content"""
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.SETTINGS, color="gray", size=30),
-            ft.Text("Settings", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Configure SnapIndex preferences", color="gray"),
-        ft.Divider(),
-        
-        ft.Text("This feature is available in the main SnapIndex application.", 
-                color="orange", size=14, weight=ft.FontWeight.BOLD),
-        ft.Text("To access settings, please run 'python standalone_app.py'", 
-                color="gray", size=12),
-        
-        ft.ElevatedButton(
-            "Open Main Application",
-            icon=ft.Icons.OPEN_IN_NEW,
-            bgcolor="gray",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=lambda e: print("Redirect to main app")
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
 def get_content_for_tab(tab_name, organize_content=None):
     """Get content for the specified tab"""
-    if tab_name == "search":
-        return create_search_content()
-    elif tab_name == "organize":
+    if tab_name == "organize":
         return organize_content if organize_content else create_organize_content("", None, DEFAULT_FOLDER)[0]
-    elif tab_name == "rename":
-        return create_rename_content()
-    elif tab_name == "settings":
-        return create_settings_content()
     else:
         return organize_content if organize_content else create_organize_content("", None, DEFAULT_FOLDER)[0]
 
@@ -787,19 +706,6 @@ def main(page: ft.Page):
         
         sidebar_buttons = []
         
-        # Search button
-        search_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.SEARCH, color="black"),
-                ft.Text("Search", weight=ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="white",
-            padding=8,
-            on_click=lambda e: on_tab_change("search"),
-            data="search"
-        )
-        sidebar_buttons.append(search_btn)
-        
         # Organize button (highlighted as current)
         organize_btn = ft.Container(
             content=ft.Row([
@@ -812,32 +718,6 @@ def main(page: ft.Page):
             data="organize"
         )
         sidebar_buttons.append(organize_btn)
-        
-        # Rename button
-        rename_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.EDIT, color="black"),
-                ft.Text("Rename", weight=ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="white",
-            padding=8,
-            on_click=lambda e: on_tab_change("rename"),
-            data="rename"
-        )
-        sidebar_buttons.append(rename_btn)
-        
-        # Settings button
-        settings_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.SETTINGS, color="black"),
-                ft.Text("Settings", weight=ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="white",
-            padding=8,
-            on_click=lambda e: on_tab_change("settings"),
-            data="settings"
-        )
-        sidebar_buttons.append(settings_btn)
         
         return ft.Container(
             content=ft.Column([

@@ -436,122 +436,6 @@ def create_search_content(file_picker):
     # Return both the content and progress components for external access
     return search_content, progress_bar, progress_text, progress_container, progress_percentage, progress_time_remaining, progress_description
 
-def create_organize_content():
-    """Create organize tab content"""
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.FOLDER_OPEN, color="green", size=30),
-            ft.Text("Organize PDFs", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Organize and categorize your PDF documents", color="gray"),
-        ft.Divider(),
-        
-        ft.ElevatedButton(
-            "Create Categories",
-            icon=ft.Icons.ADD,
-            bgcolor="green",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        ),
-        ft.ElevatedButton(
-            "Auto-categorize",
-            icon=ft.Icons.AUTO_AWESOME,
-            bgcolor="teal",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        ),
-        ft.ElevatedButton(
-            "Import Categories",
-            icon=ft.Icons.UPLOAD,
-            bgcolor="blue",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
-def create_rename_content():
-    """Create rename tab content"""
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.EDIT, color="orange", size=30),
-            ft.Text("Rename PDFs", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Rename and organize your PDF files", color="gray"),
-        ft.Divider(),
-        
-        ft.ElevatedButton(
-            "Batch Rename",
-            icon=ft.Icons.DRIVE_FILE_RENAME_OUTLINE,
-            bgcolor="orange",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        ),
-        ft.ElevatedButton(
-            "Auto-rename by Content",
-            icon=ft.Icons.SMART_TOY,
-            bgcolor="purple",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        ),
-        ft.ElevatedButton(
-            "Rename by Date",
-            icon=ft.Icons.CALENDAR_MONTH,
-            bgcolor="indigo",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
-def create_settings_content():
-    """Create settings tab content"""
-    folder_field = ft.TextField(
-        label="Default Search Folder",
-        value=selected_folder,
-        expand=True,
-        read_only=True
-    )
-    
-    def browse_folder(e):
-        # Note: Flet doesn't have native file dialog yet, so we'll use a simple input
-        folder_field.value = "C:\\Users\\akarsh\\Downloads"  # Placeholder
-        folder_field.update()
-    
-    return ft.Column([
-        ft.Row([
-            ft.Icon(ft.Icons.SETTINGS, color="gray", size=30),
-            ft.Text("Settings", size=24, weight=ft.FontWeight.BOLD)
-        ]),
-        ft.Text("Configure SnapIndex preferences", color="gray"),
-        ft.Divider(),
-        
-        ft.Text("Default Search Folder:", weight=ft.FontWeight.BOLD),
-        ft.Row([
-            folder_field,
-            ft.ElevatedButton(
-                "Browse",
-                icon=ft.Icons.FOLDER_OPEN,
-                on_click=browse_folder
-            )
-        ]),
-        
-        ft.Divider(),
-        
-        ft.Text("Search Options:", weight=ft.FontWeight.BOLD),
-        ft.Switch(label="Case sensitive search", value=False),
-        ft.Switch(label="Search in subfolders", value=True),
-        ft.Switch(label="Show file paths", value=True),
-        
-        ft.Divider(),
-        
-        ft.ElevatedButton(
-            "Save Settings",
-            icon=ft.Icons.SAVE,
-            bgcolor="gray",
-            color="white",
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
-        )
-    ], expand=True, scroll=ft.ScrollMode.AUTO)
-
 def main(page: ft.Page):
     page.title = "SnapIndex"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -609,45 +493,6 @@ def main(page: ft.Page):
         )
         sidebar_buttons.append(search_btn)
         
-        # Organize button
-        organize_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.FOLDER_OPEN, color="black"),
-                ft.Text("Organize", weight=ft.FontWeight.BOLD if current_tab == "organize" else ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="#f5f7fa" if current_tab == "organize" else "white",
-            padding=8,
-            on_click=lambda e: on_tab_change("organize"),
-            data="organize"
-        )
-        sidebar_buttons.append(organize_btn)
-        
-        # Rename button
-        rename_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.EDIT, color="black"),
-                ft.Text("Rename", weight=ft.FontWeight.BOLD if current_tab == "rename" else ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="#f5f7fa" if current_tab == "rename" else "white",
-            padding=8,
-            on_click=lambda e: on_tab_change("rename"),
-            data="rename"
-        )
-        sidebar_buttons.append(rename_btn)
-        
-        # Settings button
-        settings_btn = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.SETTINGS, color="black"),
-                ft.Text("Settings", weight=ft.FontWeight.BOLD if current_tab == "settings" else ft.FontWeight.NORMAL)
-            ]),
-            bgcolor="#f5f7fa" if current_tab == "settings" else "white",
-            padding=8,
-            on_click=lambda e: on_tab_change("settings"),
-            data="settings"
-        )
-        sidebar_buttons.append(settings_btn)
-        
         return ft.Container(
             content=ft.Column([
                 ft.Container(
@@ -697,12 +542,6 @@ def main(page: ft.Page):
             global_progress_description = progress_description
             print(f"DEBUG: Progress components stored - Container: {global_progress_container}, Text: {global_progress_text}, Bar: {global_progress_bar}")
             return content
-        elif tab_name == "organize":
-            return create_organize_content()
-        elif tab_name == "rename":
-            return create_rename_content()
-        elif tab_name == "settings":
-            return create_settings_content()
         else:
             content, progress_bar, progress_text, progress_container, progress_percentage, progress_time_remaining, progress_description = create_search_content(file_picker)
             # Store progress components globally

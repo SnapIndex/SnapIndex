@@ -278,10 +278,10 @@ def main(page: ft.Page) -> None:
 
     # Header
     header = ft.Container(
-        content=ft.Image(src="banner.png"),
+        content=ft.Image(src="rename.png"),
         border_radius=ft.border_radius.all(20),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        margin=ft.margin.only(left=0, right=0, top=-50),
+        margin=ft.margin.only(left=0, right=0, top=-100),
         padding=ft.padding.only(bottom=0),
     )
 
@@ -563,24 +563,17 @@ def main(page: ft.Page) -> None:
         buttons_row,
     ], expand=True, scroll=ft.ScrollMode.AUTO, spacing=10, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
-    # Sidebar (navbar) similar styling to main app
+    # Sidebar (navbar) simplified for rename-only functionality
     def create_sidebar() -> ft.Container:
-        def show_info(_: ft.ControlEvent) -> None:
-            page.snack_bar = ft.SnackBar(ft.Text("Open the main app for Search/Organize/Settings."))
-            page.snack_bar.open = True
-            page.update()
-
-        def button(label: str, icon: str, tab_name: str) -> ft.Container:
-            return ft.Container(
-                content=ft.Row([
-                    ft.Icon(icon, color="black"),
-                    ft.Text(label, weight=ft.FontWeight.BOLD if tab_name == current_tab else ft.FontWeight.NORMAL),
-                ]),
-                bgcolor="#f5f7fa" if tab_name == current_tab else "white",
-                padding=8,
-                on_click=show_info if tab_name != "rename" else None,
-                data=tab_name,
-            )
+        rename_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.EDIT, color="black"),
+                ft.Text("Rename", weight=ft.FontWeight.BOLD),
+            ]),
+            bgcolor="#f5f7fa",
+            padding=8,
+            data="rename",
+        )
 
         return ft.Container(
             content=ft.Column([
@@ -592,10 +585,7 @@ def main(page: ft.Page) -> None:
                     padding=ft.padding.only(left=10, right=10, top=10, bottom=0),
                 ),
                 ft.Divider(),
-                button("Search", ft.Icons.SEARCH, "search"),
-                button("Organize", ft.Icons.FOLDER_OPEN, "organize"),
-                button("Rename", ft.Icons.EDIT, "rename"),
-                button("Settings", ft.Icons.SETTINGS, "settings"),
+                rename_btn,
             ]),
             width=200,
             bgcolor="white",

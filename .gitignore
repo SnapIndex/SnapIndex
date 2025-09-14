@@ -2,6 +2,8 @@ dist
 app.spec
 organize.spec
 standalone_app.spec
+rename_suggestions.log
+rename.spec
 build
 __pycache__/*
 faiss_database/*
