@@ -16,10 +16,49 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from simple_faiss import create_faiss_db, search_faiss_db, delete_faiss_db
 from file_loader import find_documents, extract_text_from_file, SUPPORTED_EXTENSIONS
 
+# Import the simplified LangChain agent for advanced chat functionality
+try:
+    from simple_langchain_agent import initialize_agent, chat_with_agent, get_search_results_for_ui
+    LANGCHAIN_AVAILABLE = True
+    print("✅ Simple LangChain agent available")
+except ImportError as e:
+    LANGCHAIN_AVAILABLE = False
+    print(f"❌ Simple LangChain agent not available: {e}")
+
+# Try to import Ollama for local LLM, fallback to requests for API calls
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    print("Ollama not available, using fallback command parsing")
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("Requests not available for API calls")
+
 # Global variables
 selected_folder = "C:\\Users\\akarsh\\Downloads"
 current_tab = "search"
 db_path = "./faiss_database"
+
+# LLM Configuration for advanced chat functionality
+LLM_MODEL = "llama3.2:3b"  # Lightweight model for Windows ARM compatibility
+OLLAMA_BASE_URL = "http://localhost:11434"  # Default Ollama URL
+
+# Initialize LangChain agent
+agent_initialized = False
+if LANGCHAIN_AVAILABLE:
+    try:
+        agent_initialized = initialize_agent()
+        if agent_initialized:
+            print("✅ Simple SnapIndex agent initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize simple SnapIndex agent: {e}")
+        agent_initialized = False
 
 # -------------------------
 # LLM configuration for rename functionality
@@ -582,6 +621,208 @@ def open_file_location(file_path):
             subprocess.run(['xdg-open', file_path], check=True)
     except Exception as e:
         print(f"Error opening file: {e}")
+
+# -------------------------
+# Advanced Chat Functionality
+# -------------------------
+
+def parse_natural_language_command(user_input):
+    """
+    Parse natural language commands using LLM or fallback regex patterns
+    Returns a structured command object
+    """
+    # Try LLM parsing first
+    if OLLAMA_AVAILABLE:
+        try:
+            return parse_with_llm(user_input)
+        except Exception as e:
+            print(f"LLM parsing failed: {e}, falling back to regex")
+    
+    # Fallback to regex pattern matching
+    return parse_with_regex(user_input)
+
+def parse_with_llm(user_input):
+    """
+    Use Ollama LLM to parse natural language commands
+    """
+    prompt = f"""
+    Parse this user command and return a JSON response with the following structure:
+    {{
+        "action": "search|select_folder|organize|rename",
+        "folder": "folder_path_or_name",
+        "keyword": "search_term",
+        "file_type": "documents|images|videos|audio|all",
+        "confidence": 0.0-1.0
+    }}
+    
+    User command: "{user_input}"
+    
+    Examples:
+    - "select Documents folder and find hello keyword" -> {{"action": "search", "folder": "Documents", "keyword": "hello", "file_type": "documents", "confidence": 0.9}}
+    - "find images of landscapes" -> {{"action": "search", "folder": null, "keyword": "landscapes", "file_type": "images", "confidence": 0.8}}
+    - "search for PDF files about finance" -> {{"action": "search", "folder": null, "keyword": "finance", "file_type": "documents", "confidence": 0.9}}
+    
+    Return only the JSON, no other text:
+    """
+    
+    try:
+        response = ollama.chat(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.1}
+        )
+        
+        # Extract JSON from response
+        content = response['message']['content'].strip()
+        
+        # Try to find JSON in the response
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group()
+            return json.loads(json_str)
+        else:
+            raise ValueError("No JSON found in LLM response")
+            
+    except Exception as e:
+        print(f"LLM parsing error: {e}")
+        raise e
+
+def parse_with_regex(user_input):
+    """
+    Fallback regex-based command parsing
+    """
+    user_input_lower = user_input.lower()
+    
+    # Initialize command structure
+    command = {
+        "action": "search",
+        "folder": None,
+        "keyword": None,
+        "file_type": "all",
+        "confidence": 0.7
+    }
+    
+    # Extract folder names
+    folder_patterns = [
+        r'select\s+(\w+)\s+folder',
+        r'in\s+(\w+)\s+folder',
+        r'from\s+(\w+)\s+folder',
+        r'(\w+)\s+folder'
+    ]
+    
+    for pattern in folder_patterns:
+        match = re.search(pattern, user_input_lower)
+        if match:
+            command["folder"] = match.group(1)
+            break
+    
+    # Extract keywords
+    keyword_patterns = [
+        r'find\s+["\']?([^"\']+)["\']?\s+keyword',
+        r'search\s+for\s+["\']?([^"\']+)["\']?',
+        r'find\s+["\']?([^"\']+)["\']?',
+        r'["\']([^"\']+)["\']'
+    ]
+    
+    for pattern in keyword_patterns:
+        match = re.search(pattern, user_input_lower)
+        if match:
+            command["keyword"] = match.group(1).strip()
+            break
+    
+    # Extract file types
+    if 'document' in user_input_lower or 'pdf' in user_input_lower or 'word' in user_input_lower:
+        command["file_type"] = "documents"
+    elif 'image' in user_input_lower or 'photo' in user_input_lower or 'picture' in user_input_lower:
+        command["file_type"] = "images"
+    elif 'video' in user_input_lower or 'movie' in user_input_lower:
+        command["file_type"] = "videos"
+    elif 'audio' in user_input_lower or 'music' in user_input_lower or 'sound' in user_input_lower:
+        command["file_type"] = "audio"
+    
+    return command
+
+def execute_command(command, current_folder):
+    """
+    Execute the parsed command and return results
+    """
+    try:
+        # Handle folder selection
+        if command.get("folder"):
+            folder_path = resolve_folder_path(command["folder"], current_folder)
+            if folder_path and os.path.exists(folder_path):
+                global selected_folder
+                selected_folder = folder_path
+                print(f"Selected folder: {selected_folder}")
+            else:
+                return {"error": f"Folder '{command['folder']}' not found"}
+        
+        # Handle search action
+        if command["action"] == "search" and command.get("keyword"):
+            # Perform search in the selected folder
+            results = search_in_documents(command["keyword"], selected_folder)
+            
+            # Filter by file type if specified
+            if command["file_type"] != "all":
+                results = filter_by_file_type(results, command["file_type"])
+            
+            return {
+                "success": True,
+                "results": results,
+                "keyword": command["keyword"],
+                "folder": selected_folder,
+                "file_type": command["file_type"],
+                "count": len(results)
+            }
+        
+        return {"error": "Invalid command or missing parameters"}
+        
+    except Exception as e:
+        return {"error": f"Command execution failed: {str(e)}"}
+
+def resolve_folder_path(folder_name, current_folder):
+    """
+    Resolve folder name to full path
+    """
+    # Common folder mappings
+    folder_mappings = {
+        "documents": os.path.join(os.path.expanduser("~"), "Documents"),
+        "downloads": os.path.join(os.path.expanduser("~"), "Downloads"),
+        "desktop": os.path.join(os.path.expanduser("~"), "Desktop"),
+        "pictures": os.path.join(os.path.expanduser("~"), "Pictures"),
+        "videos": os.path.join(os.path.expanduser("~"), "Videos"),
+        "music": os.path.join(os.path.expanduser("~"), "Music"),
+    }
+    
+    # Check if it's a mapped folder
+    if folder_name.lower() in folder_mappings:
+        return folder_mappings[folder_name.lower()]
+    
+    # Check if it's a relative path from current folder
+    relative_path = os.path.join(current_folder, folder_name)
+    if os.path.exists(relative_path):
+        return relative_path
+    
+    # Check if it's an absolute path
+    if os.path.exists(folder_name):
+        return folder_name
+    
+    return None
+
+def filter_by_file_type(results, file_type):
+    """
+    Filter search results by file type
+    """
+    if file_type == "all":
+        return results
+    
+    filtered_results = []
+    for result in results:
+        result_file_type = result.get("file_type", "").lower()
+        if file_type.lower() in result_file_type or result_file_type in file_type.lower():
+            filtered_results.append(result)
+    
+    return filtered_results
 
 def create_search_content(file_picker):
     """Create search tab content"""
@@ -1777,6 +2018,371 @@ def create_rename_content(file_picker, page_update_callback=None):
 
     return root
 
+def create_chat_content(file_picker):
+    """Create chat tab content with UI similar to the image"""
+    
+    # Chat messages container
+    chat_messages = ft.Column(
+        scroll=ft.ScrollMode.AUTO,
+        spacing=10,
+        expand=True,
+        controls=[]
+    )
+    
+    # Chat input field
+    chat_input = ft.TextField(
+        hint_text="Ask me anything",
+        expand=True,
+        border_radius=25,
+        content_padding=ft.padding.symmetric(horizontal=20, vertical=15),
+        filled=True,
+        bgcolor=ft.Colors.WHITE,
+        border=ft.border.all(1, ft.Colors.GREY_300),
+        multiline=False,
+        max_lines=1
+    )
+    
+    
+    def handle_chat_submit(e):
+        """Handle chat message submission"""
+        message = chat_input.value.strip()
+        if not message:
+            return
+        
+        # Add user message
+        add_chat_message(message, is_user=True)
+        
+        # Clear input
+        chat_input.value = ""
+        chat_input.update()
+        
+        # Use LangChain agent if available, otherwise fallback to old system
+        if agent_initialized:
+            try:
+                # Get response from LangChain agent
+                response = chat_with_agent(message)
+                
+                # Check if the response contains file search results
+                if any(keyword in message.lower() for keyword in ['find', 'search', 'show', 'get', 'select', 'folder', 'keyword']):
+                    # Try to extract search results for file display
+                    try:
+                        # Parse the message to extract search parameters
+                        command = parse_natural_language_command(message)
+                        if command.get("keyword"):
+                            # Get search results for file display
+                            search_results = get_search_results_for_ui(
+                                command["keyword"], 
+                                command.get("folder") and resolve_folder_path(command["folder"], selected_folder),
+                                command.get("file_type", "all")
+                            )
+                            if search_results:
+                                add_chat_message(response, is_user=False, files_found=search_results)
+                            else:
+                                add_chat_message(response, is_user=False)
+                        else:
+                            add_chat_message(response, is_user=False)
+                    except:
+                        add_chat_message(response, is_user=False)
+                else:
+                    add_chat_message(response, is_user=False)
+                    
+            except Exception as ex:
+                print(f"LangChain agent error: {ex}")
+                # Fallback to old system
+                add_chat_message(f"Sorry, I encountered an error: {str(ex)}. Let me try a different approach.", is_user=False)
+        else:
+            # Fallback to old command parsing system
+            if any(keyword in message.lower() for keyword in ['find', 'search', 'show', 'get', 'select', 'folder', 'keyword']):
+                # Try to parse as natural language command
+                try:
+                    command = parse_natural_language_command(message)
+                    print(f"Parsed command: {command}")
+                    
+                    # Execute the command
+                    result = execute_command(command, selected_folder)
+                    
+                    if result.get("success"):
+                        # Command executed successfully
+                        if result.get("results"):
+                            response = f"Found {result['count']} {result['file_type']} files containing '{result['keyword']}' in {os.path.basename(result['folder'])}:"
+                            add_chat_message(response, is_user=False, files_found=result["results"])
+                        else:
+                            response = f"No {result['file_type']} files found containing '{result['keyword']}' in {os.path.basename(result['folder'])}."
+                            add_chat_message(response, is_user=False)
+                    else:
+                        # Command failed
+                        error_msg = result.get("error", "Unknown error occurred")
+                        response = f"Sorry, I couldn't process that command: {error_msg}"
+                        add_chat_message(response, is_user=False)
+                        
+                except Exception as ex:
+                    print(f"Command processing error: {ex}")
+                    # Fallback to simple search
+                    try:
+                        results = search_in_documents(message, selected_folder)
+                        if results:
+                            response = f"I found {len(results)} files matching your query. Here are the results:"
+                            add_chat_message(response, is_user=False, files_found=results)
+                        else:
+                            response = "I couldn't find any files matching your query. Try a different search term."
+                            add_chat_message(response, is_user=False)
+                    except Exception as ex2:
+                        response = f"Sorry, I encountered an error while searching: {str(ex2)}"
+                        add_chat_message(response, is_user=False)
+            else:
+                # General chat response
+                response = f"I understand you're asking about: '{message}'. I can help you find files, organize documents, or answer questions about your files. Try commands like 'select Documents folder and find hello keyword' or 'find images of landscapes'. What would you like to do?"
+                add_chat_message(response, is_user=False)
+    
+    # Send button
+    send_button = ft.IconButton(
+        icon=ft.Icons.SEND,
+        icon_color=ft.Colors.BLUE_600,
+        tooltip="Send message",
+        on_click=handle_chat_submit
+    )
+    
+    voice_button = ft.IconButton(
+        icon=ft.Icons.MIC,
+        icon_color=ft.Colors.GREY_600,
+        tooltip="Voice input"
+    )
+    
+    def add_chat_message(message, is_user=True, files_found=None):
+        """Add a message to the chat"""
+        if is_user:
+            # User message
+            user_message = ft.Container(
+                content=ft.Row([
+                    ft.Text(message, color=ft.Colors.BLACK, size=14)
+                ], alignment=ft.MainAxisAlignment.END),
+                bgcolor=ft.Colors.BLUE_50,
+                padding=ft.padding.all(12),
+                border_radius=ft.border_radius.only(
+                    top_left=20, top_right=20, bottom_left=20, bottom_right=5
+                ),
+                margin=ft.margin.only(left=50, right=10, top=5, bottom=5)
+            )
+            chat_messages.controls.append(user_message)
+        else:
+            # Assistant message
+            assistant_content = [ft.Text(message, color=ft.Colors.BLACK, size=14)]
+            
+            if files_found:
+                # Add file results similar to the image
+                file_card = ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Text(f"{len(files_found)} files", 
+                                   weight=ft.FontWeight.BOLD, size=16),
+                            ft.ElevatedButton(
+                                "View all files",
+                                icon=ft.Icons.OPEN_IN_NEW,
+                                bgcolor=ft.Colors.WHITE,
+                                color=ft.Colors.BLUE_600,
+                                style=ft.ButtonStyle(
+                                    shape=ft.RoundedRectangleBorder(radius=8),
+                                    padding=ft.padding.symmetric(horizontal=12, vertical=6)
+                                )
+                            )
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        *[create_file_item(file) for file in files_found[:2]]  # Show first 2 files
+                    ], spacing=8),
+                    bgcolor=ft.Colors.WHITE,
+                    padding=ft.padding.all(15),
+                    border_radius=12,
+                    border=ft.border.all(1, ft.Colors.GREY_300),
+                    shadow=ft.BoxShadow(
+                        spread_radius=1,
+                        blur_radius=4,
+                        color=ft.Colors.GREY_400,
+                        offset=ft.Offset(0, 2)
+                    )
+                )
+                assistant_content.append(file_card)
+            
+            assistant_message = ft.Container(
+                content=ft.Column(assistant_content, spacing=10),
+                bgcolor=ft.Colors.WHITE,
+                padding=ft.padding.all(12),
+                border_radius=ft.border_radius.only(
+                    top_left=20, top_right=20, bottom_left=5, bottom_right=20
+                ),
+                margin=ft.margin.only(left=10, right=50, top=5, bottom=5),
+                border=ft.border.all(1, ft.Colors.GREY_200)
+            )
+            chat_messages.controls.append(assistant_message)
+        
+        chat_messages.update()
+    
+    def create_file_item(file_info):
+        """Create a clickable file item similar to the image"""
+        
+        def on_file_click(e):
+            """Handle file click to open the file"""
+            try:
+                # Construct the full file path
+                file_name = file_info['file']
+                folder_path = file_info['full_path']
+                full_file_path = os.path.join(folder_path, file_name)
+                
+                # Open the file using the system default program
+                open_file_location(full_file_path)
+                
+                # Add a message to chat showing the file was opened
+                add_chat_message(f"Opened file: {file_name}", is_user=False)
+                
+            except Exception as ex:
+                error_msg = f"Could not open file: {str(ex)}"
+                add_chat_message(error_msg, is_user=False)
+        
+        def on_add_to_conversation(e):
+            """Handle 'Add to conversation' button click"""
+            file_name = file_info['file']
+            add_chat_message(f"Added {file_name} to conversation", is_user=False)
+        
+        # Get appropriate icon based on file type
+        file_type = file_info.get('file_type', '').lower()
+        if 'image' in file_type:
+            file_icon = ft.Icons.IMAGE
+        elif 'video' in file_type:
+            file_icon = ft.Icons.VIDEO_FILE
+        elif 'audio' in file_type:
+            file_icon = ft.Icons.AUDIO_FILE
+        elif 'document' in file_type or 'pdf' in file_name.lower():
+            file_icon = ft.Icons.DESCRIPTION
+        elif 'code' in file_type or any(ext in file_name.lower() for ext in ['.py', '.js', '.html', '.css']):
+            file_icon = ft.Icons.CODE
+        else:
+            file_icon = ft.Icons.INSERT_DRIVE_FILE
+        
+        # Get file modification time for display
+        try:
+            file_path = os.path.join(file_info['full_path'], file_info['file'])
+            if os.path.exists(file_path):
+                mod_time = os.path.getmtime(file_path)
+                from datetime import datetime
+                mod_date = datetime.fromtimestamp(mod_time)
+                time_ago = f"{mod_date.strftime('%d/%m/%Y')}"
+            else:
+                time_ago = "Unknown"
+        except:
+            time_ago = "Unknown"
+        
+        return ft.GestureDetector(
+            content=ft.Container(
+                content=ft.Row([
+                    ft.Icon(
+                        file_icon,
+                        color=ft.Colors.BLUE_600,
+                        size=20
+                    ),
+                    ft.Column([
+                        ft.Text(file_info['file'], weight=ft.FontWeight.BOLD, size=12),
+                        ft.Text(time_ago, color=ft.Colors.GREY_600, size=10)
+                    ], spacing=2, expand=True),
+                    ft.ElevatedButton(
+                        "Add to conversation",
+                        bgcolor=ft.Colors.WHITE,
+                        color=ft.Colors.BLUE_600,
+                        style=ft.ButtonStyle(
+                            shape=ft.RoundedRectangleBorder(radius=6),
+                            padding=ft.padding.symmetric(horizontal=8, vertical=4)
+                        ),
+                        on_click=on_add_to_conversation
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.MORE_VERT,
+                        icon_color=ft.Colors.GREY_600,
+                        icon_size=16
+                    )
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                padding=ft.padding.symmetric(vertical=8, horizontal=12),
+                bgcolor=ft.Colors.GREY_50,
+                border_radius=8,
+                margin=ft.margin.only(bottom=5)
+            ),
+            on_tap=on_file_click
+        )
+    
+    
+    # Chat interface
+    chat_interface = ft.Container(
+        content=ft.Column([
+            # Chat messages area
+            ft.Container(
+                content=chat_messages,
+                expand=True,
+                padding=ft.padding.all(20),
+                bgcolor=ft.Colors.GREY_50
+            ),
+            
+            # Chat input area
+            ft.Container(
+                content=ft.Row([
+                    chat_input,
+                    voice_button,
+                    send_button
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, spacing=10),
+                padding=ft.padding.all(20),
+                bgcolor=ft.Colors.WHITE,
+                border=ft.border.only(top=ft.BorderSide(1, ft.Colors.GREY_300))
+            )
+        ], expand=True),
+        expand=True
+    )
+    
+    # Set up chat input submission
+    chat_input.on_submit = handle_chat_submit
+    
+    chat_content = ft.Column([
+        chat_interface
+    ], expand=True)
+    
+    # Add initial welcome message after content is created
+    def add_welcome_message():
+        if agent_initialized:
+            welcome_msg = """🚀 Hello! I'm SnapIndex, your enthusiastic file management assistant! 
+
+I can help you with:
+🔍 **Smart File Search** - Find files using natural language
+📁 **Folder Management** - Navigate and organize your folders  
+📄 **File Operations** - Open, organize, and manage your files
+📊 **File Analysis** - Get detailed information about your files
+
+Try asking me things like:
+• "Find all PDF files about finance in my Documents folder"
+• "Show me images from last month"
+• "Organize my Downloads folder"
+• "What's in my Pictures folder?"
+
+I'm here to make file management fun and easy! What would you like to do? 😊"""
+        else:
+            welcome_msg = """Hello! I can help you find and organize files on your PC using natural language commands. Try commands like:
+• 'select Documents folder and find hello keyword'
+• 'find images of landscapes'  
+• 'search for PDF files about finance'
+I'll automatically parse your commands and search the appropriate folders!"""
+        
+        # Add the welcome message to the chat messages list without calling update
+        assistant_message = ft.Container(
+            content=ft.Column([ft.Text(welcome_msg, color=ft.Colors.BLACK, size=14)], spacing=10),
+            bgcolor=ft.Colors.WHITE,
+            padding=ft.padding.all(12),
+            border_radius=ft.border_radius.only(
+                top_left=20, top_right=20, bottom_left=5, bottom_right=20
+            ),
+            margin=ft.margin.only(left=10, right=50, top=5, bottom=5),
+            border=ft.border.all(1, ft.Colors.GREY_200)
+        )
+        chat_messages.controls.append(assistant_message)
+    
+    # Store the function to call later
+    chat_content.add_welcome_message = add_welcome_message
+    
+    return chat_content
+
 def create_settings_content():
     """Create settings tab content"""
     folder_field = ft.TextField(
@@ -1858,6 +2464,12 @@ def main(page: ft.Page):
             # Update content
             content_container.content = get_content_for_tab(tab_name)
             content_container.update()
+            
+            # Add welcome message to chat if switching to chat tab
+            if tab_name == "chat" and hasattr(content_container.content, 'add_welcome_message'):
+                content_container.content.add_welcome_message()
+                content_container.update()
+            
             page.update()
         
         sidebar_buttons = []
@@ -1900,6 +2512,19 @@ def main(page: ft.Page):
             data="rename"
         )
         sidebar_buttons.append(rename_btn)
+        
+        # Chat button
+        chat_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.CHAT, color="black"),
+                ft.Text("Chat", weight=ft.FontWeight.BOLD if current_tab == "chat" else ft.FontWeight.NORMAL)
+            ]),
+            bgcolor="#f5f7fa" if current_tab == "chat" else "white",
+            padding=8,
+            on_click=lambda e: on_tab_change("chat"),
+            data="chat"
+        )
+        sidebar_buttons.append(chat_btn)
         
         # Settings button
         settings_btn = ft.Container(
@@ -1971,6 +2596,9 @@ def main(page: ft.Page):
             return content
         elif tab_name == "rename":
             return create_rename_content(file_picker, lambda: page.update())
+        elif tab_name == "chat":
+            content = create_chat_content(file_picker)
+            return content
         elif tab_name == "settings":
             return create_settings_content()
         else:
