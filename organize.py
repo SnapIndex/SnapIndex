@@ -4,6 +4,182 @@ import sys
 import shutil
 import json
 from datetime import datetime
+import re
+import traceback
+from typing import Optional, List
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from file_loader import extract_text_from_file, SUPPORTED_EXTENSIONS
+
+# -------------------------
+# LLM for genre classification (Qwen)
+# -------------------------
+DEFAULT_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+
+# Fixed set of document genres
+GENRE_LABELS: List[str] = [
+    "History", "Geography", "Statistics", "Mathematics", "Physics", "Chemistry", "Biology",
+    "Computer Science", "Programming", "Data Science", "Machine Learning", "Artificial Intelligence",
+    "Economics", "Finance", "Business", "Marketing", "Management",
+    "Law", "Politics", "Government",
+    "Literature", "Philosophy", "Psychology", "Sociology",
+    "Art", "Music",
+    "Engineering", "Technology",
+    "Medicine", "Health",
+    "Education",
+    "Environmental Science", "Earth Science", "Astronomy",
+    "Travel", "Sports",
+    "Research Paper", "Report", "Manual", "How-To", "Tutorial",
+    "Presentation", "Resume", "Invoice", "Contract", "Legal",
+    "Cooking", "Recipe",
+    "Other",
+]
+
+
+class GenreLLM:
+    """Lazy-loaded LLM wrapper to classify document context into a fixed genre set."""
+
+    def __init__(self, model_id: str = DEFAULT_MODEL_ID, device: str = "auto") -> None:
+        self.model_id = model_id
+        self.device = device
+        self._model: Optional[AutoModelForCausalLM] = None
+        self._tokenizer: Optional[AutoTokenizer] = None
+        self._load_failed: bool = False
+
+    def _ensure_loaded(self) -> None:
+        if self._model is not None and self._tokenizer is not None:
+            return
+        if self._load_failed:
+            return
+        try:
+            device = self.device
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+
+            tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                torch_dtype=torch.float32,
+                device_map="auto",
+            )
+            if device == "cpu":
+                model = model.to("cpu")
+
+            self._tokenizer = tokenizer
+            self._model = model
+            try:
+                print(f"[GenreLLM] Loaded {self.model_id} on {device}", flush=True)
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                print(f"[GenreLLM][error] Load failed: {e}", flush=True)
+                traceback.print_exc()
+            except Exception:
+                pass
+            self._load_failed = True
+
+    def classify_genre(self, context: str) -> str:
+        """Return a single genre label from GENRE_LABELS for the given context."""
+        self._ensure_loaded()
+        if self._load_failed or self._tokenizer is None or self._model is None:
+            return self._fallback_classification(context)
+
+        genres_str = ", ".join(GENRE_LABELS)
+        system_msg = (
+            "You are a strict document classifier. Choose EXACTLY ONE genre label from the provided list. "
+            "Respond with only the label text, no punctuation, no explanation."
+        )
+        user_msg = (
+            f"Genres: {genres_str}\n\n"
+            f"Document excerpt (short):\n{(context or '').strip()[:1600]}\n\n"
+            "Return exactly one label from the list above."
+        )
+
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg},
+        ]
+
+        try:
+            tokenizer = self._tokenizer
+            model = self._model
+            if hasattr(tokenizer, "apply_chat_template"):
+                prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
+            else:
+                inputs = tokenizer(user_msg, return_tensors="pt").to(model.device)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    inputs.input_ids,
+                    attention_mask=inputs.attention_mask,
+                    max_new_tokens=16,
+                    temperature=0.0,
+                    do_sample=False,
+                )
+
+            text = tokenizer.decode(outputs[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
+            candidate = (text.splitlines()[0] if text.strip() else "").strip()
+            # Normalize and validate against allowed labels
+            normalized = candidate
+            # Exact match first
+            if normalized in GENRE_LABELS:
+                return normalized
+            # Try loose matching (case-insensitive)
+            for g in GENRE_LABELS:
+                if normalized.lower() == g.lower():
+                    return g
+            return "Other"
+        except Exception as e:
+            try:
+                print(f"[GenreLLM][error] Classification failed: {e}", flush=True)
+                traceback.print_exc()
+            except Exception:
+                pass
+            self._load_failed = True
+            return self._fallback_classification(context)
+
+    def _fallback_classification(self, context: str) -> str:
+        # Quick heuristics as a last resort
+        txt = (context or "").lower()
+        if any(k in txt for k in ["algorithm", "code", "python", "java", "programming"]):
+            return "Programming"
+        if any(k in txt for k in ["statistic", "regression", "probability", "mean", "variance"]):
+            return "Statistics"
+        if any(k in txt for k in ["history", "ancient", "medieval", "revolution", "war"]):
+            return "History"
+        if any(k in txt for k in ["economics", "market", "finance", "inflation", "gdp"]):
+            return "Economics"
+        return "Other"
+
+
+def extract_document_context(file_path: str, file_name: str, max_chars: int = 4000) -> str:
+    """Extract a concise context snippet (about 1-2 pages) for LLM classification."""
+    try:
+        ext = os.path.splitext(file_name)[1].lower()
+        file_type = SUPPORTED_EXTENSIONS.get(ext)
+        file_info = {
+            "path": file_path,
+            "name": file_name,
+            "extension": ext,
+            "type": file_type,
+        }
+        chunks = extract_text_from_file(file_info)
+        # Prefer 'content' chunks and take the first few until max_chars
+        content_texts: List[str] = []
+        for ch in chunks:
+            if ch.get("chunk_type") == "content" and ch.get("text"):
+                content_texts.append(ch["text"].strip())
+        # Fallbacks: any non-filename chunk
+        if not content_texts:
+            for ch in chunks:
+                if ch.get("chunk_type") != "filename" and ch.get("text"):
+                    content_texts.append(ch["text"].strip())
+        combined = "\n\n".join(content_texts)
+        return combined[:max_chars] if combined else os.path.splitext(file_name)[0]
+    except Exception:
+        return os.path.splitext(file_name)[0]
 
 # Function to get resource path for bundled files
 def resource_path(relative_path):
@@ -25,6 +201,8 @@ def create_organize_content(source_folder, file_picker, default_folder):
     """Create organize content with pre-set source folder"""
     # Global variables for source and destination folders
     destination_folder = ""
+    # Initialize Genre LLM lazily
+    genre_llm = GenreLLM()
     
     # Create file picker for destination only
     destination_picker = ft.FilePicker()
@@ -53,11 +231,11 @@ def create_organize_content(source_folder, file_picker, default_folder):
         weight=ft.FontWeight.BOLD
     )
     
-    # Tree view for showing file moves
+    # Tree view for showing file moves (force scrollbar visible)
     tree_view = ft.Column(
-        scroll=ft.ScrollMode.AUTO,
+        scroll=ft.ScrollMode.ALWAYS,
         spacing=2,
-        height=300,
+        height=420,
         controls=[ft.Text("📁 Source folder is pre-selected. Choose destination folder and click 'Organize Files' to begin", 
                           size=12, color=ft.Colors.GREY_600, italic=True)]
     )
@@ -71,7 +249,7 @@ def create_organize_content(source_folder, file_picker, default_folder):
                 border_radius=8,
                 padding=10,
                 bgcolor=ft.Colors.GREY_50,
-                height=300
+                height=420
             )
         ], spacing=8),
         visible=False,  # Hidden initially, shown after organization
@@ -279,6 +457,26 @@ def create_organize_content(source_folder, file_picker, default_folder):
                         # It's a file - categorize by extension
                         category = get_file_category(item_name)
                         category_dir = os.path.join(destination_folder, category)
+
+                        # For documents, classify into a genre and create subfolder
+                        display_category = category
+                        if category == "Documents":
+                            try:
+                                # Extract ~1-2 pages of context and classify
+                                context_snippet = extract_document_context(item_path, item_name)
+                                predicted_genre = genre_llm.classify_genre(context_snippet) or "Other"
+                                if predicted_genre not in GENRE_LABELS:
+                                    predicted_genre = "Other"
+                                # Use genre subfolder
+                                category_dir = os.path.join(destination_folder, "Documents", predicted_genre)
+                                display_category = f"Documents/{predicted_genre}"
+                            except Exception as e:
+                                try:
+                                    print(f"[Genre] Classification failed for {item_name}: {e}", flush=True)
+                                except Exception:
+                                    pass
+                                # Fallback: keep regular Documents folder
+                                predicted_genre = "Other"
                         
                         # Create category directory if it doesn't exist
                         if not os.path.exists(category_dir):
@@ -299,15 +497,15 @@ def create_organize_content(source_folder, file_picker, default_folder):
                         # Move the file and track the move
                         shutil.move(item_path, dest_path)
                         
-                        # Update tree view
-                        update_tree_view_with_move(original_path, dest_path, category)
+                        # Update tree view (use genre-aware label if available)
+                        update_tree_view_with_move(original_path, dest_path, display_category)
                         
                         # Record the move for rollback
                         rollback_data["moves"].append({
                             "original_path": original_path,
                             "new_path": dest_path,
                             "type": "file",
-                            "category": category
+                            "category": display_category
                         })
                         
                     elif os.path.isdir(item_path):

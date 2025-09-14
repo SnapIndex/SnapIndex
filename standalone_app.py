@@ -1082,8 +1082,167 @@ def create_search_content(file_picker):
 def create_organize_content(file_picker):
     """Create organize tab content"""
     # Global variables for source and destination folders
-    source_folder = ""
+    # Default source to current selected_folder or user Downloads
+    try:
+        default_downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+    except Exception:
+        default_downloads = ""
+    if selected_folder and os.path.isdir(selected_folder):
+        source_folder = selected_folder
+    elif default_downloads and os.path.isdir(default_downloads):
+        source_folder = default_downloads
+    else:
+        source_folder = ""
     destination_folder = ""
+    
+    # -------------------------
+    # Genre classification wrapper (Qwen) used only for document routing
+    # -------------------------
+    GENRE_LABELS: List[str] = [
+        "History", "Geography", "Statistics", "Mathematics", "Physics", "Chemistry", "Biology",
+        "Computer Science", "Programming", "Data Science", "Machine Learning", "Artificial Intelligence",
+        "Economics", "Finance", "Business", "Marketing", "Management",
+        "Law", "Politics", "Government",
+        "Literature", "Philosophy", "Psychology", "Sociology",
+        "Art", "Music",
+        "Engineering", "Technology",
+        "Medicine", "Health",
+        "Education",
+        "Environmental Science", "Earth Science", "Astronomy",
+        "Travel", "Sports",
+        "Research Paper", "Report", "Manual", "How-To", "Tutorial",
+        "Presentation", "Resume", "Invoice", "Contract", "Legal",
+        "Cooking", "Recipe",
+        "Other",
+    ]
+    
+    class _GenreLLM:
+        """Lazy-loaded classifier that returns one label from GENRE_LABELS."""
+        
+        def __init__(self, model_id: str = DEFAULT_MODEL_ID, device: str = "auto") -> None:
+            self.model_id = model_id
+            self.device = device
+            self._model: Optional[AutoModelForCausalLM] = None
+            self._tokenizer: Optional[AutoTokenizer] = None
+            self._load_failed: bool = False
+        
+        def _ensure_loaded(self) -> None:
+            if self._model is not None and self._tokenizer is not None:
+                return
+            if self._load_failed:
+                return
+            try:
+                device = self.device
+                if device == "auto":
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+                model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id,
+                    torch_dtype=torch.float32,
+                    device_map="auto",
+                )
+                if device == "cpu":
+                    model = model.to("cpu")
+                self._tokenizer = tokenizer
+                self._model = model
+            except Exception as e:
+                try:
+                    print(f"[GenreLLM][error] Load failed: {e}", flush=True)
+                    traceback.print_exc()
+                except Exception:
+                    pass
+                self._load_failed = True
+        
+        def classify(self, context: str) -> str:
+            self._ensure_loaded()
+            if self._load_failed or self._tokenizer is None or self._model is None:
+                return self._fallback(context)
+            genres_str = ", ".join(GENRE_LABELS)
+            system_msg = (
+                "You are a strict document classifier. Choose EXACTLY ONE genre label from the provided list. "
+                "Respond with only the label text."
+            )
+            user_msg = (
+                f"Genres: {genres_str}\n\n"
+                f"Document excerpt (short):\n{(context or '').strip()[:1600]}\n\n"
+                "Return exactly one label from the list above."
+            )
+            messages = [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}]
+            try:
+                tokenizer = self._tokenizer
+                model = self._model
+                if hasattr(tokenizer, "apply_chat_template"):
+                    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                    inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
+                else:
+                    inputs = tokenizer(user_msg, return_tensors="pt").to(model.device)
+                with torch.no_grad():
+                    outputs = model.generate(
+                        inputs.input_ids,
+                        attention_mask=inputs.attention_mask,
+                        max_new_tokens=16,
+                        temperature=0.0,
+                        do_sample=False,
+                    )
+                text = tokenizer.decode(outputs[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
+                candidate = (text.splitlines()[0] if text.strip() else "").strip()
+                if candidate in GENRE_LABELS:
+                    return candidate
+                for g in GENRE_LABELS:
+                    if candidate.lower() == g.lower():
+                        return g
+                return "Other"
+            except Exception as e:
+                try:
+                    print(f"[GenreLLM][error] Classification failed: {e}", flush=True)
+                    traceback.print_exc()
+                except Exception:
+                    pass
+                self._load_failed = True
+                return self._fallback(context)
+        
+        def _fallback(self, context: str) -> str:
+            txt = (context or "").lower()
+            if any(k in txt for k in ["algorithm", "code", "python", "java", "programming"]):
+                return "Programming"
+            if any(k in txt for k in ["statistic", "regression", "probability", "mean", "variance"]):
+                return "Statistics"
+            if any(k in txt for k in ["history", "ancient", "medieval", "revolution", "war"]):
+                return "History"
+            if any(k in txt for k in ["economics", "market", "finance", "inflation", "gdp"]):
+                return "Economics"
+            return "Other"
+    
+    genre_llm = _GenreLLM()
+    
+    def _extract_document_context(file_path: str, file_name: str, max_chars: int = 4000) -> str:
+        try:
+            ext = os.path.splitext(file_name)[1].lower()
+            file_type = SUPPORTED_EXTENSIONS.get(ext)
+            file_info = {"path": file_path, "name": file_name, "extension": ext, "type": file_type}
+            chunks = extract_text_from_file(file_info)
+            content_texts: List[str] = []
+            for ch in chunks:
+                if ch.get("chunk_type") == "content" and ch.get("text"):
+                    content_texts.append(ch["text"].strip())
+            if not content_texts:
+                for ch in chunks:
+                    if ch.get("chunk_type") != "filename" and ch.get("text"):
+                        content_texts.append(ch["text"].strip())
+            combined = "\n\n".join(content_texts)
+            return combined[:max_chars] if combined else os.path.splitext(file_name)[0]
+        except Exception:
+            return os.path.splitext(file_name)[0]
+    
+    def get_genre_destination(file_path: str, file_name: str, dest_root: str) -> (str, str):
+        """Wrapper: classify and return (category_dir, display_category)."""
+        ctx = _extract_document_context(file_path, file_name)
+        pred = genre_llm.classify(ctx) or "Other"
+        if pred not in GENRE_LABELS:
+            pred = "Other"
+        category_dir = os.path.join(dest_root, "Documents", pred)
+        display_category = f"Documents/{pred}"
+        return category_dir, display_category
     
     # Create separate file pickers for source and destination
     source_picker = ft.FilePicker()
@@ -1113,11 +1272,11 @@ def create_organize_content(file_picker):
         weight=ft.FontWeight.BOLD
     )
     
-    # Tree view for showing file moves
+    # Tree view for showing file moves (force scrollbar visible for long lists)
     tree_view = ft.Column(
-        scroll=ft.ScrollMode.AUTO,
+        scroll=ft.ScrollMode.ALWAYS,
         spacing=2,
-        height=300,
+        height=420,
         controls=[ft.Text("📁 Select source and destination folders, then click 'Organize Files' to begin", 
                           size=12, color=ft.Colors.GREY_600, italic=True)]
     )
@@ -1131,7 +1290,7 @@ def create_organize_content(file_picker):
                 border_radius=8,
                 padding=10,
                 bgcolor=ft.Colors.GREY_50,
-                height=300
+                height=420
             )
         ], spacing=8),
         visible=False,  # Hidden initially, shown after organization
@@ -1300,6 +1459,37 @@ def create_organize_content(file_picker):
                         indent=1
                     )
                     add_to_tree_view(file_node)
+
+        # Render any additional dynamic categories (e.g., Documents/History)
+        for category in sorted(files_by_category.keys()):
+            if category in category_order:
+                continue
+            if not files_by_category.get(category):
+                continue
+            category_icon = ft.Icons.INSERT_DRIVE_FILE
+            if category.startswith("Documents/"):
+                category_icon = ft.Icons.DESCRIPTION
+            elif category.startswith("Images/"):
+                category_icon = ft.Icons.IMAGE
+            elif category.startswith("Videos/"):
+                category_icon = ft.Icons.VIDEO_FILE
+            elif category.startswith("Audio/"):
+                category_icon = ft.Icons.AUDIO_FILE
+            category_node = create_tree_node(
+                f"📁 {category} ({len(files_by_category[category])} files)",
+                icon=category_icon,
+                color=ft.Colors.BLUE_600,
+                indent=0
+            )
+            add_to_tree_view(category_node)
+            for filename in sorted(files_by_category[category]):
+                file_node = create_tree_node(
+                    f"📄 {filename}",
+                    icon=ft.Icons.INSERT_DRIVE_FILE,
+                    color=ft.Colors.GREY_700,
+                    indent=1
+                )
+                add_to_tree_view(file_node)
     
     
     def organize_files():
@@ -1575,7 +1765,11 @@ def create_organize_content(file_picker):
     
     
     # Source folder selection
-    source_display = ft.Text("No source folder selected", size=12, color=ft.Colors.GREY_600)
+    source_display = ft.Text(
+        f"Source: {source_folder}" if source_folder else "No source folder selected",
+        size=12,
+        color=ft.Colors.GREY_600
+    )
     
     def on_source_folder_picked(e):
         nonlocal source_folder
@@ -1638,7 +1832,7 @@ def create_organize_content(file_picker):
         padding=ft.padding.only(bottom=20)
     )
     
-    # Organize button
+    # Organize buttons
     organize_button = ft.ElevatedButton(
         "Organize Files",
         icon=ft.Icons.SORT,
@@ -1648,6 +1842,73 @@ def create_organize_content(file_picker):
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=8),
             padding=ft.padding.symmetric(horizontal=30, vertical=15)
+        )
+    )
+    
+    def categorize_further(e):
+        # Re-run organization but only for Documents: move into Documents/<Genre>
+        if not source_folder or not destination_folder:
+            # Provide immediate user feedback in the UI
+            progress_container.visible = True
+            progress_text.visible = True
+            progress_bar.visible = False
+            progress_percentage.visible = False
+            progress_text.value = "Please select both Source and Destination folders to organize."
+            # Also show a message in the tree view area
+            clear_tree_view()
+            add_to_tree_view(create_tree_node("⚠️ Please choose both Source and Destination folders.", color=ft.Colors.ORANGE_600))
+            tree_container.visible = True
+            try:
+                tree_container.update()
+            except Exception:
+                pass
+            return
+        try:
+            # Collect all files currently in destination Documents (flat or nested)
+            docs_root = os.path.join(destination_folder, "Documents")
+            if not os.path.exists(docs_root):
+                return
+            moved = 0
+            for root, _, files in os.walk(docs_root):
+                for fname in files:
+                    src_path = os.path.join(root, fname)
+                    # Skip if already in a genre subfolder (root != docs_root)
+                    # We still allow reclassification by always classifying and moving to predicted folder
+                    try:
+                        genre_dir, display_category = get_genre_destination(src_path, fname, destination_folder)
+                        os.makedirs(genre_dir, exist_ok=True)
+                        dest_path = os.path.join(genre_dir, fname)
+                        if os.path.abspath(src_path) != os.path.abspath(dest_path):
+                            # Handle duplicates
+                            base, ext = os.path.splitext(fname)
+                            counter = 1
+                            final_dest = dest_path
+                            while os.path.exists(final_dest):
+                                alt_name = f"{base}_{counter}{ext}"
+                                final_dest = os.path.join(genre_dir, alt_name)
+                                counter += 1
+                            shutil.move(src_path, final_dest)
+                            update_tree_view_with_move(src_path, final_dest, display_category)
+                            moved += 1
+                    except Exception as _ge:
+                        try:
+                            print(f"[Genre] Categorize further failed for {src_path}: {_ge}", flush=True)
+                        except Exception:
+                            pass
+            if moved > 0:
+                display_tree_view()
+        except Exception as ex:
+            print(f"Categorize further error: {ex}")
+    
+    categorize_button = ft.ElevatedButton(
+        "Categorize Further (LLM)",
+        icon=ft.Icons.AUTO_AWESOME,
+        on_click=categorize_further,
+        bgcolor=ft.Colors.ORANGE,
+        color=ft.Colors.WHITE,
+        style=ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=8),
+            padding=ft.padding.symmetric(horizontal=20, vertical=15)
         )
     )
     
@@ -1712,18 +1973,22 @@ def create_organize_content(file_picker):
     
     organize_content = ft.Column([
         header,
-        # All three sections in one line: source, destination, and organize button
+        # First row: source and destination selectors
         ft.Row([
             source_section,
             destination_section,
+        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.START, spacing=15),
+        # Second row: action buttons
+        ft.Row([
             ft.Container(
                 content=ft.Row([
                     organize_button,
+                    categorize_button,
                     rollback_button
                 ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
                 padding=ft.padding.only(bottom=20)
             )
-        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.START, spacing=15),
+        ], alignment=ft.MainAxisAlignment.CENTER),
         progress_container,  # Progress bar only when organizing
         tree_container,  # Tree view appears after organization
         ft.Divider(),
@@ -2250,9 +2515,9 @@ def create_chat_content(file_picker):
             file_icon = ft.Icons.VIDEO_FILE
         elif 'audio' in file_type:
             file_icon = ft.Icons.AUDIO_FILE
-        elif 'document' in file_type or 'pdf' in file_name.lower():
+        elif 'document' in file_type or 'pdf' in file_info.get('file', '').lower():
             file_icon = ft.Icons.DESCRIPTION
-        elif 'code' in file_type or any(ext in file_name.lower() for ext in ['.py', '.js', '.html', '.css']):
+        elif 'code' in file_type or any(ext in file_info.get('file', '').lower() for ext in ['.py', '.js', '.html', '.css']):
             file_icon = ft.Icons.CODE
         else:
             file_icon = ft.Icons.INSERT_DRIVE_FILE
