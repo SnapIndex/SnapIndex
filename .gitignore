@@ -2,3 +2,4 @@ dist
 app.spec
 build
 __pycache__/*
+faiss_databases/*

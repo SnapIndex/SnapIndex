@@ -1,0 +1,47 @@
+{
+  "C:\\Users\\akarsh\\Documents\\pdfs": {
+    "last_scan": "2025-09-13T20:35:38.848019",
+    "files": {
+      "C:\\Users\\akarsh\\Documents\\pdfs\\check.html.html": {
+        "size": 51522,
+        "mtime": 1757809001.921598,
+        "hash": "26b532685f8a1375c66842182b80eddb"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\file-example_PDF_1MB.pdf": {
+        "size": 1042157,
+        "mtime": 1757790384.7429223,
+        "hash": "ee7ac8084eeab08035fdcb47bfa81931"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\hello.txt": {
+        "size": 1283,
+        "mtime": 1757809461.100412,
+        "hash": "7e787e1da30f4e783cecaea449299a85"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\hil.txt": {
+        "size": 766,
+        "mtime": 1757810090.352111,
+        "hash": "d1bf2536bdfbb43a986055cf6e75277a"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\sample-2.pdf": {
+        "size": 22698,
+        "mtime": 1757804518.242607,
+        "hash": "e4cfe8b91e5fd878e62914c2db54f029"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\sample-3.pdf": {
+        "size": 112615,
+        "mtime": 1757804520.4212918,
+        "hash": "553f511272c893157834d89b5dfb7454"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\sample-4.pdf": {
+        "size": 40622,
+        "mtime": 1757804521.1629052,
+        "hash": "184bad0fe688090d0cdc7a3faa7ac5f7"
+      },
+      "C:\\Users\\akarsh\\Documents\\pdfs\\sample-5.pdf": {
+        "size": 46887,
+        "mtime": 1757804522.157241,
+        "hash": "25b7133ad850b806554cd0e832560654"
+      }
+    }
+  }
+}

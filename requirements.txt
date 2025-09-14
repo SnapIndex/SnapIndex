@@ -1,6 +1,9 @@
 # Core dependencies for SnapIndex
-# PDF processing
+# Document processing
 pypdf>=6.0.0
+python-docx>=0.8.11
+openpyxl>=3.1.0
+python-pptx>=0.6.21
 
 # Audio processing and transcription
 librosa>=0.10.0
@@ -26,6 +29,11 @@ PyYAML>=6.0
 
 # GUI framework
 flet>=0.21.0
+
+# Vector embeddings and FAISS
+fastembed>=0.2.0
+faiss-cpu>=1.7.4
+# faiss-gpu>=1.7.4  # Uncomment for GPU support
 
 # Optional: For audio file loading
 # audio2numpy>=0.1.5

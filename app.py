@@ -1,35 +1,63 @@
 import flet as ft
 import sys
 import os
-from doc_loader import find_pdfs, extract_pdf_text
+from simple_faiss import create_faiss_db, search_faiss_db, delete_faiss_db
 
 # Hard-coded folder location
 selected_folder = "C:\\Users\\akarsh\\Downloads"
+db_path = "./faiss_database"
 
 def search_in_pdfs(query, folder_path):
-    """Search for query text in all PDFs in the folder"""
-    results = []
-    pdf_files = find_pdfs(folder_path)
+    """Search for query text using FAISS semantic search"""
+    try:
+        # Check if database exists, if not create it
+        if not os.path.exists(db_path):
+            print("Creating FAISS database...")
+            create_faiss_db(folder_path, db_path)
+        
+        # Use the search_faiss_db function from simple_faiss.py
+        # and capture the results in the expected format
+        return _get_faiss_results(query, db_path, k=10)
+        
+    except Exception as e:
+        print(f"Error in FAISS search: {e}")
+        return []
+
+def _get_faiss_results(query_string, db_path, k=10):
+    """Get FAISS search results using functions from simple_faiss.py"""
+    import faiss
+    import numpy as np
+    import pickle
+    from fastembed import TextEmbedding
     
-    for pdf_path in pdf_files:
-        try:
-            for page_data in extract_pdf_text(pdf_path):
-                text = page_data["text"].lower()
-                if query.lower() in text:
-                    # Find the position of the query in the text
-                    query_pos = text.find(query.lower())
-                    start = max(0, query_pos - 100)
-                    end = min(len(page_data["text"]), query_pos + len(query) + 100)
-                    snippet = page_data["text"][start:end]
-                    
-                    results.append({
-                        "file": page_data["pdf_name"],
-                        "page": page_data["page_number"],
-                        "snippet": snippet,
-                        "full_path": pdf_path
-                    })
-        except Exception as e:
-            print(f"Error processing {pdf_path}: {e}")
+    # Load index and metadata (same logic as in simple_faiss.py)
+    index = faiss.read_index(os.path.join(db_path, "index.faiss"))
+    with open(os.path.join(db_path, "metadata.pkl"), "rb") as f:
+        metadata = pickle.load(f)
+    
+    # Create query embedding (same logic as in simple_faiss.py)
+    embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    query_vector = list(embedding_model.embed([query_string]))[0]
+    
+    # Search (same logic as in simple_faiss.py)
+    distances, indices = index.search(np.array([query_vector], dtype='float32'), k)
+    
+    # Format results to match the original app.py structure
+    results = []
+    for distance, idx in zip(distances[0], indices[0]):
+        if idx == -1:
+            continue
+        
+        meta = metadata[idx]
+        similarity = 1 / (1 + distance)  # Convert distance to similarity
+        
+        results.append({
+            "file": meta["pdf_name"],
+            "page": meta["page_number"],
+            "snippet": meta["text"][:300] + "..." if len(meta["text"]) > 300 else meta["text"],
+            "full_path": selected_folder,  # Use the global selected_folder
+            "similarity": similarity
+        })
     
     return results
 
@@ -97,6 +125,7 @@ def main(page: ft.Page):
         if results:
             for i, result in enumerate(results, 1):
                 # Create result card
+                similarity_score = result.get('similarity', 0)
                 result_card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
@@ -105,6 +134,12 @@ def main(page: ft.Page):
                                     f"{result['file']} - Page {result['page']}",
                                     weight=ft.FontWeight.BOLD,
                                     color="blue"
+                                ),
+                                ft.Text(
+                                    f"Similarity: {similarity_score:.3f}",
+                                    size=12,
+                                    color="green",
+                                    weight=ft.FontWeight.BOLD
                                 )
                             ]),
                             ft.Text(
@@ -136,9 +171,9 @@ def main(page: ft.Page):
         ft.Column([
             # Header
             ft.Row([
-                ft.Text("SnapIndex PDF Search", size=24, weight=ft.FontWeight.BOLD)
+                ft.Text("SnapIndex Semantic Search", size=24, weight=ft.FontWeight.BOLD)
             ]),
-            ft.Text(f"Searching in: {selected_folder}", color="gray"),
+            ft.Text(f"Searching in: {selected_folder} (FAISS-powered semantic search)", color="gray"),
             ft.Divider(),
             
             # Search section

@@ -1,37 +1,120 @@
 import flet as ft
 import os
-from doc_loader import find_pdfs, extract_pdf_text
+import subprocess
+import hashlib
+import platform
+from simple_faiss import create_faiss_db, search_faiss_db, delete_faiss_db
+from file_loader import find_documents, extract_text_from_file
 
 # Global variables
 selected_folder = "C:\\Users\\akarsh\\Downloads"
 current_tab = "search"
+db_path = "./faiss_database"
 
+def search_in_documents(query, folder_path):
+    """Search for query text using FAISS semantic search across all document types"""
+    try:
+        # Create a unique database path for each folder (avoid overlaps across same-named folders)
+        abs_folder = os.path.abspath(folder_path)
+        folder_hash = hashlib.sha1(abs_folder.encode("utf-8")).hexdigest()[:12]
+        safe_name = os.path.basename(abs_folder) or "root"
+        folder_db_path = os.path.join("./faiss_databases", f"{safe_name}_{folder_hash}")
+        
+        # Check if database exists, if not create it, otherwise update incrementally
+        if not os.path.exists(folder_db_path):
+            print(f"Creating new FAISS database for folder: {folder_path}")
+            create_faiss_db(folder_path, folder_db_path, incremental=False)
+        else:
+            print(f"Updating FAISS database incrementally for folder: {folder_path}")
+            create_faiss_db(folder_path, folder_db_path, incremental=True)
+        
+        # Use FAISS search and return results in the expected format
+        return _get_faiss_results(query, folder_db_path, k=10, folder_path=folder_path)
+        
+    except Exception as e:
+        print(f"Error in FAISS search: {e}")
+        return []
+
+# Backward compatibility
 def search_in_pdfs(query, folder_path):
-    """Search for query text in all PDFs in the folder"""
+    """Backward compatibility - same as search_in_documents"""
+    return search_in_documents(query, folder_path)
+
+def _get_faiss_results(query_string, db_path, k=10, folder_path=None):
+    """Get FAISS search results using functions from simple_faiss.py"""
+    import faiss
+    import numpy as np
+    import pickle
+    from fastembed import TextEmbedding
+    
+    # Load index and metadata (same logic as in simple_faiss.py)
+    index = faiss.read_index(os.path.join(db_path, "index.faiss"))
+    with open(os.path.join(db_path, "metadata.pkl"), "rb") as f:
+        metadata = pickle.load(f)
+    
+    # Create query embedding (same logic as in simple_faiss.py)
+    embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    query_vector = list(embedding_model.embed([query_string]))[0]
+    
+    # Search (same logic as in simple_faiss.py)
+    distances, indices = index.search(np.array([query_vector], dtype='float32'), k)
+    
+    # Format results to match the original structure
     results = []
-    pdf_files = find_pdfs(folder_path)
+    threshold = 0.6  # Only show results with similarity >= 0.75
     
-    for pdf_path in pdf_files:
-        try:
-            for page_data in extract_pdf_text(pdf_path):
-                text = page_data["text"].lower()
-                if query.lower() in text:
-                    # Find the position of the query in the text
-                    query_pos = text.find(query.lower())
-                    start = max(0, query_pos - 100)
-                    end = min(len(page_data["text"]), query_pos + len(query) + 100)
-                    snippet = page_data["text"][start:end]
-                    
-                    results.append({
-                        "file": page_data["pdf_name"],
-                        "page": page_data["page_number"],
-                        "snippet": snippet,
-                        "full_path": pdf_path
-                    })
-        except Exception as e:
-            print(f"Error processing {pdf_path}: {e}")
+    for distance, idx in zip(distances[0], indices[0]):
+        if idx == -1:
+            continue
+        
+        meta = metadata[idx]
+        similarity = 1 / (1 + distance)  # Convert distance to similarity
+        
+        # Only include results above the threshold
+        if similarity >= threshold:
+            # Determine file type from the file name
+            file_name = meta["pdf_name"]
+            file_ext = os.path.splitext(file_name)[1].lower()
+            file_type = file_ext[1:] if file_ext else "unknown"
+            
+            # Determine if this is a filename match or content match
+            chunk_type = meta.get("chunk_type", "content")
+            page_display = "Filename" if chunk_type == "filename" else f"Page {meta['page_number']}"
+            
+            results.append({
+                "file": file_name,
+                "page": page_display,
+                "snippet": meta["text"][:300] + "..." if len(meta["text"]) > 300 else meta["text"],
+                "full_path": folder_path or selected_folder,  # Use the actual folder path
+                "similarity": similarity,
+                "file_type": file_type,
+                "chunk_type": chunk_type
+            })
     
-    return results
+    # Deduplicate: keep only the best match per file to avoid repeated results
+    best_by_file = {}
+    for item in results:
+        key = item["file"]  # collapse to one result per file
+        if key not in best_by_file or item["similarity"] > best_by_file[key]["similarity"]:
+            best_by_file[key] = item
+    deduped = list(best_by_file.values())
+    # Sort by similarity descending
+    deduped.sort(key=lambda r: r.get("similarity", 0), reverse=True)
+    
+    return deduped
+
+def open_file_location(file_path):
+    """Open the PDF file directly"""
+    try:
+        if platform.system() == "Windows":
+            # Use Windows default program to open the PDF file
+            os.startfile(file_path)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(['open', file_path], check=True)
+        else:  # Linux
+            subprocess.run(['xdg-open', file_path], check=True)
+    except Exception as e:
+        print(f"Error opening file: {e}")
 
 def create_search_content(file_picker):
     """Create search tab content"""
@@ -73,31 +156,63 @@ def create_search_content(file_picker):
         
         if results:
             for result in results:
-                # Create result card
+                # Create clickable result card
+                def create_click_handler(result_data):
+                    def on_card_click(e):
+                        # Construct the full file path
+                        file_name = result_data['file']
+                        folder_path = result_data['full_path']
+                        full_file_path = os.path.join(folder_path, file_name)
+                        
+                        # Open the PDF file directly
+                        open_file_location(full_file_path)
+                    return on_card_click
+                
                 result_card = ft.Card(
-                    content=ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Icon(ft.Icons.PICTURE_AS_PDF, color="red"),
+                    content=ft.GestureDetector(
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Icon(
+                                        ft.Icons.TITLE if result.get('chunk_type') == 'filename' else ft.Icons.DESCRIPTION, 
+                                        color="orange" if result.get('chunk_type') == 'filename' else "blue"
+                                    ),
                                 ft.Text(
-                                    f"{result['file']} - Page {result['page']}",
+                                    f"{result['file']} ({result.get('file_type', 'unknown').upper()}) - {result['page']}",
                                     weight=ft.FontWeight.BOLD,
                                     color="blue"
+                                ),
+                                    ft.Text(
+                                        f"Similarity: {result.get('similarity', 0):.3f}",
+                                        size=12,
+                                        color="green",
+                                        weight=ft.FontWeight.BOLD
+                                    )
+                                ]),
+                                ft.Text(
+                                    result['snippet'],
+                                    size=12,
+                                    color="gray"
+                                ),
+                                ft.Row([
+                                    ft.Text(
+                                        f"File: {result['full_path']}",
+                                        size=10,
+                                        color="gray",
+                                        italic=True
+                                    ),
+                                ft.Text(
+                                    "Click to open file",
+                                    size=10,
+                                    color="blue",
+                                    italic=True,
+                                    weight=ft.FontWeight.BOLD
                                 )
-                            ]),
-                            ft.Text(
-                                result['snippet'],
-                                size=12,
-                                color="gray"
-                            ),
-                            ft.Text(
-                                f"File: {result['full_path']}",
-                                size=10,
-                                color="gray",
-                                italic=True
-                            )
-                        ], tight=True),
-                        padding=15
+                                ])
+                            ], tight=True),
+                            padding=15
+                        ),
+                        on_tap=create_click_handler(result)
                     ),
                     margin=ft.margin.only(bottom=10)
                 )
@@ -114,8 +229,8 @@ def create_search_content(file_picker):
     # Header
     header = ft.Container(
         content=ft.Column([
-            ft.Text("Semantic File Search", size=28, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800),
-            ft.Text("Search through your documents with intelligent semantic matching", size=14, color=ft.Colors.GREY_600),
+            ft.Text("Semantic Document Search", size=28, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_800),
+            ft.Text("Search through PDFs, Word docs, Excel files, PowerPoint, and text files", size=14, color=ft.Colors.GREY_600),
             ft.Divider(height=1, color=ft.Colors.BLUE_200)
         ], spacing=8),
         padding=ft.padding.only(bottom=20)
@@ -143,8 +258,8 @@ def create_search_content(file_picker):
     
     # Search section
     search_field = ft.TextField(
-        label="Search Query",
-        hint_text="Enter your search query...",
+        label="Search All Documents",
+        hint_text="Search across PDFs, Word docs, Excel, PowerPoint, and text files...",
         expand=True,
         prefix_icon=ft.Icons.SEARCH,
         on_submit=lambda e: perform_search(e, search_field, results_container)
