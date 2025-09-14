@@ -1,5 +1,6 @@
 dist
 app.spec
+organize.spec
 build
 __pycache__/*
 faiss_database/*
