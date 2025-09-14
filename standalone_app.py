@@ -295,10 +295,10 @@ def create_search_content(file_picker):
         content=ft.Image(
             src="banner.png",
         ),
-        border_radius=ft.border_radius.all(15),
+        border_radius=ft.border_radius.all(20),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        margin=ft.margin.only(left=-20, right=-20, top=-160),
-        padding=ft.padding.only(bottom=10),
+        margin=ft.margin.only(left=0, right=0, top=-50),
+        padding=ft.padding.only(bottom=0),
     )
     
     # Folder selection section
@@ -425,7 +425,7 @@ def create_organize_content(file_picker):
                 height=300
             )
         ], spacing=8),
-        visible=True,  # Always visible
+        visible=False,  # Hidden initially, shown after organization
         padding=ft.padding.only(bottom=10)
     )
     
@@ -710,11 +710,13 @@ def create_organize_content(file_picker):
             # Add completion message to tree view
             add_to_tree_view(create_tree_node(f"✅ Organization complete! Processed {processed} items.", color=ft.Colors.GREEN_600))
             
+            # Show tree view after organization is complete
+            tree_container.visible = True
+            tree_container.update()
+            
             # Update rollback button visibility
             rollback_button.visible = True
             rollback_button.update()
-            
-            # Keep tree view visible to show final results
             
         except Exception as e:
             progress_text.value = f"Error during organization: {str(e)}"
@@ -822,11 +824,12 @@ def create_organize_content(file_picker):
         content=ft.Image(
             src="reorg.png",
         ),
-        border_radius=ft.border_radius.all(15),
+        border_radius=ft.border_radius.all(20),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        margin=ft.margin.only(left=-20, right=-20, top=-160),
-        padding=ft.padding.only(bottom=10),
+        margin=ft.margin.only(left=0, right=0, top=0),
+        padding=ft.padding.only(bottom=0),
     )
+    
     
     # Source folder selection
     source_display = ft.Text("No source folder selected", size=12, color=ft.Colors.GREY_600)
@@ -842,24 +845,21 @@ def create_organize_content(file_picker):
     
     source_section = ft.Container(
         content=ft.Column([
-            ft.Text("Select Source Folder", size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([
-                ft.ElevatedButton(
-                    "Choose Source",
-                    icon=ft.Icons.FOLDER_OPEN,
-                    on_click=lambda _: source_picker.get_directory_path(),
-                    bgcolor=ft.Colors.BLUE_600,
-                    color=ft.Colors.WHITE,
-                    style=ft.ButtonStyle(
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                        padding=ft.padding.symmetric(horizontal=20, vertical=12),
-                        elevation=3,
-                        shadow_color=ft.Colors.BLUE_800
-                    )
-                ),
-                source_display
-            ], alignment=ft.MainAxisAlignment.START, spacing=10)
-        ], spacing=8),
+            ft.ElevatedButton(
+                "Choose Source",
+                icon=ft.Icons.FOLDER_OPEN,
+                on_click=lambda _: source_picker.get_directory_path(),
+                bgcolor=ft.Colors.GREEN_600,
+                color=ft.Colors.WHITE,
+                style=ft.ButtonStyle(
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=12),
+                    elevation=3,
+                    shadow_color=ft.Colors.GREEN_800
+                )
+            ),
+            source_display
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.padding.only(bottom=20)
     )
     
@@ -872,31 +872,26 @@ def create_organize_content(file_picker):
             destination_folder = e.path
             destination_display.value = f"Destination: {destination_folder}"
             destination_display.update()
-            # Check for existing rollback info
-            check_existing_rollback()
     
     destination_picker.on_result = on_destination_folder_picked
     
     destination_section = ft.Container(
         content=ft.Column([
-            ft.Text("Select Destination Folder", size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([
-                ft.ElevatedButton(
-                    "Choose Destination",
-                    icon=ft.Icons.FOLDER_OPEN,
-                    on_click=lambda _: destination_picker.get_directory_path(),
-                    bgcolor=ft.Colors.GREEN_600,
-                    color=ft.Colors.WHITE,
-                    style=ft.ButtonStyle(
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                        padding=ft.padding.symmetric(horizontal=20, vertical=12),
-                        elevation=3,
-                        shadow_color=ft.Colors.GREEN_800
-                    )
-                ),
-                destination_display
-            ], alignment=ft.MainAxisAlignment.START, spacing=10)
-        ], spacing=8),
+            ft.ElevatedButton(
+                "Choose Destination",
+                icon=ft.Icons.FOLDER_OPEN,
+                on_click=lambda _: destination_picker.get_directory_path(),
+                bgcolor=ft.Colors.GREEN_600,
+                color=ft.Colors.WHITE,
+                style=ft.ButtonStyle(
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=12),
+                    elevation=3,
+                    shadow_color=ft.Colors.GREEN_800
+                )
+            ),
+            destination_display
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.padding.only(bottom=20)
     )
     
@@ -905,7 +900,7 @@ def create_organize_content(file_picker):
         "Organize Files",
         icon=ft.Icons.SORT,
         on_click=lambda e: organize_files(),
-        bgcolor=ft.Colors.PURPLE_600,
+        bgcolor=ft.Colors.BLACK,
         color=ft.Colors.WHITE,
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=8),
@@ -944,7 +939,8 @@ def create_organize_content(file_picker):
         padding=ft.padding.all(15),
         bgcolor=ft.Colors.GREY_50,
         border_radius=8,
-        border=ft.border.all(1, ft.Colors.GREY_300)
+        border=ft.border.all(1, ft.Colors.GREY_300),
+        height=220
     )
     
     # Rollback info section
@@ -961,34 +957,34 @@ def create_organize_content(file_picker):
         padding=ft.padding.all(15),
         bgcolor=ft.Colors.RED_50,
         border_radius=8,
-        border=ft.border.all(1, ft.Colors.RED_200)
+        border=ft.border.all(1, ft.Colors.RED_200),
+        height=220
     )
-    
-    def check_existing_rollback():
-        """Check if rollback information exists and show rollback button"""
-        if destination_folder and os.path.exists(destination_folder):
-            rollback_file = os.path.join(destination_folder, "rollback_info.json")
-            if os.path.exists(rollback_file):
-                rollback_button.visible = True
-                rollback_button.update()
     
     
     # Tree view will be populated when organize button is clicked
     
     organize_content = ft.Column([
         header,
-        source_section,
-        destination_section,
-        tree_container,  # Tree view always visible
-        progress_container,  # Progress bar only when organizing
+        # All three sections in one line: source, destination, and organize button
         ft.Row([
-            organize_button,
-            rollback_button
-        ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
+            source_section,
+            destination_section,
+            ft.Container(
+                content=ft.Row([
+                    organize_button,
+                    rollback_button
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+                padding=ft.padding.only(bottom=20)
+            )
+        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.START, spacing=15),
+        progress_container,  # Progress bar only when organizing
+        tree_container,  # Tree view appears after organization
         ft.Divider(),
-        categories_info,
-        ft.Divider(),
-        rollback_info,
+        ft.Row([
+            categories_info,
+            rollback_info
+        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, spacing=20),
     ], expand=True, scroll=ft.ScrollMode.AUTO)
     
     # Return content and file pickers for overlay

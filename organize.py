@@ -5,8 +5,21 @@ import shutil
 import json
 from datetime import datetime
 
+# Function to get resource path for bundled files
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 # Default folder location (same as in app.py)
 DEFAULT_FOLDER = "C:\\Users\\akarsh\\Downloads"
+
+# Global variable for current tab
+current_tab = "organize"
 
 def create_organize_content(source_folder, file_picker, default_folder):
     """Create organize content with pre-set source folder"""
@@ -61,7 +74,7 @@ def create_organize_content(source_folder, file_picker, default_folder):
                 height=300
             )
         ], spacing=8),
-        visible=True,  # Always visible
+        visible=False,  # Hidden initially, shown after organization
         padding=ft.padding.only(bottom=10)
     )
     
@@ -346,11 +359,13 @@ def create_organize_content(source_folder, file_picker, default_folder):
             # Add completion message to tree view
             add_to_tree_view(create_tree_node(f"✅ Organization complete! Processed {processed} items.", color=ft.Colors.GREEN_600))
             
+            # Show tree view after organization is complete
+            tree_container.visible = True
+            tree_container.update()
+            
             # Update rollback button visibility
             rollback_button.visible = True
             rollback_button.update()
-            
-            # Keep tree view visible to show final results
             
         except Exception as e:
             progress_text.value = f"Error during organization: {str(e)}"
@@ -454,13 +469,21 @@ def create_organize_content(source_folder, file_picker, default_folder):
             print(f"Error in rollback_organization: {e}")
     
     # Header with banner image
+    banner_path = resource_path("banner.png")
     header = ft.Container(
         content=ft.Image(
-            src="reorg.png",
+            src=banner_path if os.path.exists(banner_path) else None,
+            fit=ft.ImageFit.COVER if os.path.exists(banner_path) else None,
+        ) if os.path.exists(banner_path) else ft.Container(
+            content=ft.Column([
+                ft.Text("Organize Files", size=28, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE),
+                ft.Text("Automatically organize files by category", size=14, color=ft.Colors.GREY_600)
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=20
         ),
         border_radius=ft.border_radius.all(15),
         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        margin=ft.margin.only(left=-20, right=-20, top=-160),
+        margin=ft.margin.only(left=-20, right=-20, top=-20),
         padding=ft.padding.only(bottom=10),
     )
     
@@ -473,14 +496,11 @@ def create_organize_content(source_folder, file_picker, default_folder):
     
     source_section = ft.Container(
         content=ft.Column([
-            ft.Text(section_title, size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([
-                ft.Icon(ft.Icons.FOLDER, color=ft.Colors.GREEN_600),
-                source_display
-            ], alignment=ft.MainAxisAlignment.START, spacing=10),
+            ft.Icon(ft.Icons.FOLDER, color=ft.Colors.GREEN_600),
+            source_display,
             ft.Text("💡 Tip: You can also run 'python organize.py <folder_path>' to organize a specific folder", 
                     size=10, color=ft.Colors.GREY_500, italic=True) if is_default_folder else ft.Text("")
-        ], spacing=8),
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.padding.only(bottom=20),
         bgcolor=ft.Colors.GREEN_50,
         border_radius=8,
@@ -496,31 +516,26 @@ def create_organize_content(source_folder, file_picker, default_folder):
             destination_folder = e.path
             destination_display.value = f"Destination: {destination_folder}"
             destination_display.update()
-            # Check for existing rollback info
-            check_existing_rollback()
     
     destination_picker.on_result = on_destination_folder_picked
     
     destination_section = ft.Container(
         content=ft.Column([
-            ft.Text("Select Destination Folder", size=16, weight=ft.FontWeight.BOLD),
-            ft.Row([
-                ft.ElevatedButton(
-                    "Choose Destination",
-                    icon=ft.Icons.FOLDER_OPEN,
-                    on_click=lambda _: destination_picker.get_directory_path(),
-                    bgcolor=ft.Colors.GREEN_600,
-                    color=ft.Colors.WHITE,
-                    style=ft.ButtonStyle(
-                        shape=ft.RoundedRectangleBorder(radius=8),
-                        padding=ft.padding.symmetric(horizontal=20, vertical=12),
-                        elevation=3,
-                        shadow_color=ft.Colors.GREEN_800
-                    )
-                ),
-                destination_display
-            ], alignment=ft.MainAxisAlignment.START, spacing=10)
-        ], spacing=8),
+            ft.ElevatedButton(
+                "Choose Destination",
+                icon=ft.Icons.FOLDER_OPEN,
+                on_click=lambda _: destination_picker.get_directory_path(),
+                bgcolor=ft.Colors.GREEN_600,
+                color=ft.Colors.WHITE,
+                style=ft.ButtonStyle(
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=12),
+                    elevation=3,
+                    shadow_color=ft.Colors.GREEN_800
+                )
+            ),
+            destination_display
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         padding=ft.padding.only(bottom=20)
     )
     
@@ -529,7 +544,7 @@ def create_organize_content(source_folder, file_picker, default_folder):
         "Organize Files",
         icon=ft.Icons.SORT,
         on_click=lambda e: organize_files(),
-        bgcolor=ft.Colors.PURPLE_600,
+        bgcolor=ft.Colors.BLACK,
         color=ft.Colors.WHITE,
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=8),
@@ -568,7 +583,8 @@ def create_organize_content(source_folder, file_picker, default_folder):
         padding=ft.padding.all(15),
         bgcolor=ft.Colors.GREY_50,
         border_radius=8,
-        border=ft.border.all(1, ft.Colors.GREY_300)
+        border=ft.border.all(1, ft.Colors.GREY_300),
+        height=220
     )
     
     # Rollback info section
@@ -585,43 +601,139 @@ def create_organize_content(source_folder, file_picker, default_folder):
         padding=ft.padding.all(15),
         bgcolor=ft.Colors.RED_50,
         border_radius=8,
-        border=ft.border.all(1, ft.Colors.RED_200)
+        border=ft.border.all(1, ft.Colors.RED_200),
+        height=220
     )
     
-    def check_existing_rollback():
-        """Check if rollback information exists and show rollback button"""
-        if destination_folder and os.path.exists(destination_folder):
-            rollback_file = os.path.join(destination_folder, "rollback_info.json")
-            if os.path.exists(rollback_file):
-                rollback_button.visible = True
-                rollback_button.update()
     
     organize_content = ft.Column([
         header,
-        source_section,
-        destination_section,
-        tree_container,  # Tree view always visible
-        progress_container,  # Progress bar only when organizing
+        # All three sections in one line: source, destination, and organize button
         ft.Row([
-            organize_button,
-            rollback_button
-        ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
+            source_section,
+            destination_section,
+            ft.Container(
+                content=ft.Row([
+                    organize_button,
+                    rollback_button
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+                padding=ft.padding.only(bottom=20)
+            )
+        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.START, spacing=15),
+        progress_container,  # Progress bar only when organizing
+        tree_container,  # Tree view appears after organization
         ft.Divider(),
-        categories_info,
-        ft.Divider(),
-        rollback_info,
+        ft.Row([
+            categories_info,
+            rollback_info
+        ], alignment=ft.MainAxisAlignment.SPACE_EVENLY, spacing=20),
     ], expand=True, scroll=ft.ScrollMode.AUTO)
     
     # Return content and file picker for overlay
     return organize_content, destination_picker
 
+def create_search_content():
+    """Create search tab content"""
+    return ft.Column([
+        ft.Row([
+            ft.Icon(ft.Icons.SEARCH, color="blue", size=30),
+            ft.Text("Search Documents", size=24, weight=ft.FontWeight.BOLD)
+        ]),
+        ft.Text("Search through your indexed documents", color="gray"),
+        ft.Divider(),
+        
+        ft.Text("This feature is available in the main SnapIndex application.", 
+                color="orange", size=14, weight=ft.FontWeight.BOLD),
+        ft.Text("To use search functionality, please run 'python standalone_app.py'", 
+                color="gray", size=12),
+        
+        ft.ElevatedButton(
+            "Open Main Application",
+            icon=ft.Icons.OPEN_IN_NEW,
+            bgcolor="blue",
+            color="white",
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=lambda e: print("Redirect to main app")
+        )
+    ], expand=True, scroll=ft.ScrollMode.AUTO)
+
+def create_rename_content():
+    """Create rename tab content"""
+    return ft.Column([
+        ft.Row([
+            ft.Icon(ft.Icons.EDIT, color="orange", size=30),
+            ft.Text("Rename PDFs", size=24, weight=ft.FontWeight.BOLD)
+        ]),
+        ft.Text("Rename and organize your PDF files", color="gray"),
+        ft.Divider(),
+        
+        ft.Text("This feature is available in the main SnapIndex application.", 
+                color="orange", size=14, weight=ft.FontWeight.BOLD),
+        ft.Text("To use rename functionality, please run 'python standalone_app.py'", 
+                color="gray", size=12),
+        
+        ft.ElevatedButton(
+            "Open Main Application",
+            icon=ft.Icons.OPEN_IN_NEW,
+            bgcolor="orange",
+            color="white",
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=lambda e: print("Redirect to main app")
+        )
+    ], expand=True, scroll=ft.ScrollMode.AUTO)
+
+def create_settings_content():
+    """Create settings tab content"""
+    return ft.Column([
+        ft.Row([
+            ft.Icon(ft.Icons.SETTINGS, color="gray", size=30),
+            ft.Text("Settings", size=24, weight=ft.FontWeight.BOLD)
+        ]),
+        ft.Text("Configure SnapIndex preferences", color="gray"),
+        ft.Divider(),
+        
+        ft.Text("This feature is available in the main SnapIndex application.", 
+                color="orange", size=14, weight=ft.FontWeight.BOLD),
+        ft.Text("To access settings, please run 'python standalone_app.py'", 
+                color="gray", size=12),
+        
+        ft.ElevatedButton(
+            "Open Main Application",
+            icon=ft.Icons.OPEN_IN_NEW,
+            bgcolor="gray",
+            color="white",
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=lambda e: print("Redirect to main app")
+        )
+    ], expand=True, scroll=ft.ScrollMode.AUTO)
+
+def get_content_for_tab(tab_name, organize_content=None):
+    """Get content for the specified tab"""
+    if tab_name == "search":
+        return create_search_content()
+    elif tab_name == "organize":
+        return organize_content if organize_content else create_organize_content("", None, DEFAULT_FOLDER)[0]
+    elif tab_name == "rename":
+        return create_rename_content()
+    elif tab_name == "settings":
+        return create_settings_content()
+    else:
+        return organize_content if organize_content else create_organize_content("", None, DEFAULT_FOLDER)[0]
+
 def main(page: ft.Page):
-    """Main function for search.py - organize files from pre-selected folder"""
+    """Main function for organize.py - organize files from pre-selected folder"""
     page.title = "SnapIndex - Organize Files"
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.window_width = 800
+    page.window_width = 1000
     page.window_height = 700
-    page.padding = 20
+    page.padding = 0
+    
+    # Set custom window icon to replace default Flet icon
+    try:
+        page.window_icon = "logo-dark.svg"
+    except:
+        # Fallback if icon file not found
+        pass
     
     # Get source folder from command line arguments or use default
     if len(sys.argv) >= 2:
@@ -655,8 +767,111 @@ def main(page: ft.Page):
     # Add destination picker to page overlay
     page.overlay.append(destination_picker)
     
-    # Add content to page
-    page.add(organize_content)
+    # Create sidebar
+    def create_sidebar():
+        def on_tab_change(tab_name):
+            global current_tab
+            current_tab = tab_name
+            
+            # Update button styles
+            for btn in sidebar_buttons:
+                btn.bgcolor = "white" if btn.data != tab_name else "#f5f7fa"
+            
+            # Update content
+            content_container.content = get_content_for_tab(tab_name, organize_content)
+            content_container.update()
+            page.update()
+        
+        sidebar_buttons = []
+        
+        # Search button
+        search_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.SEARCH, color="black"),
+                ft.Text("Search", weight=ft.FontWeight.NORMAL)
+            ]),
+            bgcolor="white",
+            padding=8,
+            on_click=lambda e: on_tab_change("search"),
+            data="search"
+        )
+        sidebar_buttons.append(search_btn)
+        
+        # Organize button (highlighted as current)
+        organize_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.FOLDER_OPEN, color="black"),
+                ft.Text("Organize", weight=ft.FontWeight.BOLD)
+            ]),
+            bgcolor="#f5f7fa",
+            padding=8,
+            on_click=lambda e: on_tab_change("organize"),
+            data="organize"
+        )
+        sidebar_buttons.append(organize_btn)
+        
+        # Rename button
+        rename_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.EDIT, color="black"),
+                ft.Text("Rename", weight=ft.FontWeight.NORMAL)
+            ]),
+            bgcolor="white",
+            padding=8,
+            on_click=lambda e: on_tab_change("rename"),
+            data="rename"
+        )
+        sidebar_buttons.append(rename_btn)
+        
+        # Settings button
+        settings_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.SETTINGS, color="black"),
+                ft.Text("Settings", weight=ft.FontWeight.NORMAL)
+            ]),
+            bgcolor="white",
+            padding=8,
+            on_click=lambda e: on_tab_change("settings"),
+            data="settings"
+        )
+        sidebar_buttons.append(settings_btn)
+        
+        return ft.Container(
+            content=ft.Column([
+                ft.Container(
+                    content=ft.Row([
+                        ft.Image(
+                            src="logo-dark.svg",
+                            width=24,
+                            height=24,
+                            fit=ft.ImageFit.CONTAIN
+                        ),
+                        ft.Text("SnapIndex", size=20, weight=ft.FontWeight.BOLD)
+                    ]),
+                    padding=ft.padding.only(left=10, right=10, top=10, bottom=0)
+                ),
+                ft.Divider(),
+                *sidebar_buttons
+            ]),
+            width=200,
+            bgcolor="white",
+            border=ft.border.only(right=ft.BorderSide(1, "gray"))
+        )
+    
+    # Create main layout
+    sidebar = create_sidebar()
+    content_container = ft.Container(
+        content=get_content_for_tab(current_tab, organize_content),
+        expand=True,
+        padding=20
+    )
+    
+    page.add(
+        ft.Row([
+            sidebar,
+            content_container
+        ], expand=True)
+    )
 
 if __name__ == "__main__":
     ft.app(target=main)
